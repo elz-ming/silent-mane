@@ -1,0 +1,18 @@
+export interface VaultFile {
+  path: string;       // relative path, e.g. "projects/SILENTMANE/BUILD.md"
+  content: string;
+  updatedAt: string;  // ISO 8601
+}
+
+export interface VaultStorage {
+  /** List all .md files, optionally filtered to a path prefix. */
+  list(prefix?: string): Promise<VaultFile[]>;
+  /** Read a single file. Returns null if not found. */
+  read(path: string): Promise<string | null>;
+  /** Write (create or overwrite) a file. */
+  write(path: string, content: string): Promise<void>;
+  /** Delete a file. No-op if not found. */
+  delete(path: string): Promise<void>;
+  /** Returns true if a file exists at path. */
+  exists(path: string): Promise<boolean>;
+}
