@@ -66,6 +66,21 @@ program
   });
 
 program
+  .command("serve-next")
+  .description("Start the Silent Mane viewer using Next.js (App Router)")
+  .option("-p, --port <port>", "port", "3000")
+  .option("-d, --docs <dir>", "docs directory", "docs")
+  .action((opts) => {
+    const docs = path.resolve(process.cwd(), opts.docs);
+    const child = spawn("npx", ["next", "dev", "--port", opts.port], {
+      cwd: pkgRoot,
+      stdio: "inherit",
+      env: { ...process.env, SILENT_MANE_DOCS: docs },
+    });
+    child.on("exit", (code) => process.exit(code ?? 0));
+  });
+
+program
   .command("mcp")
   .description("Run the Silent Mane MCP server over stdio")
   .option("-d, --docs <dir>", "docs directory", "docs")
