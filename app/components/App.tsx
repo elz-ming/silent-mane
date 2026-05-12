@@ -404,14 +404,29 @@ export function App({ namespace }: { namespace: string }) {
           <div className="connect-section">
             <span className="pat-label">Connect to Claude Code</span>
             {mcpCommand ? (
-              <>
+              <div className="connect-cmd-row">
                 <code className="pat-value connect-cmd" title={mcpCommand}>
-                  {mcpCommand.length > 36 ? mcpCommand.slice(0, 36) + "…" : mcpCommand}
+                  {mcpCommand.length > 28 ? mcpCommand.slice(0, 28) + "…" : mcpCommand}
                 </code>
-                <button className="connect-copy-btn" onClick={copyMcpCommand} type="button">
-                  {mcpCopied ? "✓ Copied!" : "Copy command"}
+                <button
+                  className={`connect-copy-icon${mcpCopied ? " copied" : ""}`}
+                  onClick={copyMcpCommand}
+                  type="button"
+                  title="Copy MCP command"
+                  aria-label="Copy MCP command"
+                >
+                  {mcpCopied ? (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M2.5 7.5L5.5 10.5L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <rect x="4.5" y="1.5" width="8" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+                      <path d="M2.5 4.5H2A1.5 1.5 0 0 0 .5 6v6A1.5 1.5 0 0 0 2 13.5h5.5A1.5 1.5 0 0 0 9 12v-.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                    </svg>
+                  )}
                 </button>
-              </>
+              </div>
             ) : (
               <span style={{ fontSize: 11, color: "var(--muted)" }}>Loading…</span>
             )}

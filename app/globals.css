@@ -287,25 +287,37 @@ body {
   gap: 6px;
   flex-shrink: 0;
 }
+.connect-cmd-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
 .connect-cmd {
+  flex: 1;
+  min-width: 0;
   font-size: 10px !important;
   cursor: default;
   user-select: all;
-}
-.connect-copy-btn {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 7px 10px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  text-align: center;
-  transition: opacity 0.12s;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.connect-copy-btn:hover { opacity: 0.88; }
+.connect-copy-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--muted);
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.connect-copy-icon:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.connect-copy-icon.copied { color: #16a34a; border-color: #bbf7d0; background: #f0fdf4; }
 .connect-signin-link {
   font-size: 11px;
   color: var(--muted);
