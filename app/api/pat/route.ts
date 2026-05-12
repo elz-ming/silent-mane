@@ -1,23 +1,6 @@
-import { createClient } from "@supabase/supabase-js";
+import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-
-function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-}
-
-async function hashToken(token: string): Promise<string> {
-  const buf = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(token)
-  );
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+import { adminClient, hashToken } from "@/src/lib/supabase/admin";
 
 function generateToken(): string {
   const bytes = new Uint8Array(24);
@@ -25,42 +8,42 @@ function generateToken(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function resolveUser(req: Request) {
-  const authHeader = req.headers.get("authorization") ?? "";
-  const sessionToken = authHeader.replace(/^Bearer\s+/i, "");
-  if (!sessionToken) return null;
-  const { data } = await adminClient().auth.getUser(sessionToken);
-  return data.user ?? null;
-}
-
-// GET /api/pat — returns whether a token exists (no plaintext)
-// POST /api/pat — rotates/creates token, returns plaintext once
-export async function GET(req: Request) {
-  const user = await resolveUser(req);
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+// GET  /api/pat — does a token exist for this user?
+// POST /api/pat — rotate (or create) token; returns plaintext once
+export async function GET() {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { data } = await adminClient()
     .from("pat_tokens")
     .select("created_at")
-    .eq("user_id", user.id)
+    .eq("clerk_id", userId)
     .maybeSingle();
 
   return NextResponse.json({ exists: !!data, created_at: data?.created_at ?? null });
 }
 
-export async function POST(req: Request) {
-  const user = await resolveUser(req);
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+export async function POST() {
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  // Ensure profile exists before inserting token (FK constraint)
+  await adminClient()
+    .from("profiles")
+    .upsert({ clerk_id: userId }, { onConflict: "clerk_id" });
 
   const token = generateToken();
   const hash = await hashToken(token);
 
-  const { error } = await adminClient().from("pat_tokens").upsert(
-    { user_id: user.id, token_hash: hash, created_at: new Date().toISOString() },
-    { onConflict: "user_id" }
-  );
+  const { error } = await adminClient()
+    .from("pat_tokens")
+    .upsert(
+      { clerk_id: userId, token_hash: hash, created_at: new Date().toISOString() },
+      { onConflict: "clerk_id" }
+    );
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Plaintext returned once — never stored.
   return NextResponse.json({ token });
 }
