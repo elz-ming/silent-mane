@@ -39,8 +39,7 @@ export async function GET(req: Request) {
   const user = await resolveUser(req);
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const db = adminClient().schema("emdee");
-  const { data } = await db
+  const { data } = await adminClient()
     .from("pat_tokens")
     .select("created_at")
     .eq("user_id", user.id)
@@ -56,8 +55,7 @@ export async function POST(req: Request) {
   const token = generateToken();
   const hash = await hashToken(token);
 
-  const db = adminClient().schema("emdee");
-  const { error } = await db.from("pat_tokens").upsert(
+  const { error } = await adminClient().from("pat_tokens").upsert(
     { user_id: user.id, token_hash: hash, created_at: new Date().toISOString() },
     { onConflict: "user_id" }
   );
