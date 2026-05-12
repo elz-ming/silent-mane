@@ -187,6 +187,25 @@ export function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [patToken, setPatToken] = useState<string | null>(null);
   const [patCopied, setPatCopied] = useState(false);
+  const [canSync, setCanSync] = useState(false);
+  const [syncState, setSyncState] = useState<"idle" | "syncing" | "done" | "error">("idle");
+
+  useEffect(() => {
+    fetch("/api/sync").then((r) => r.json()).then((d) => setCanSync(d.canSync)).catch(() => {});
+  }, []);
+
+  const handleSync = useCallback(async () => {
+    setSyncState("syncing");
+    try {
+      const res = await fetch("/api/sync", { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      setSyncState("done");
+      setTimeout(() => setSyncState("idle"), 3000);
+    } catch {
+      setSyncState("error");
+      setTimeout(() => setSyncState("idle"), 3000);
+    }
+  }, []);
 
   useEffect(() => {
     let token = localStorage.getItem("emdee_pat");
@@ -330,6 +349,21 @@ export function App() {
               </button>
             </div>
           </div>
+          {canSync && (
+            <div className="sync-section">
+              <button
+                className="sync-btn"
+                onClick={handleSync}
+                disabled={syncState === "syncing"}
+                type="button"
+              >
+                {syncState === "idle" && "Push to Cloud"}
+                {syncState === "syncing" && "Syncing…"}
+                {syncState === "done" && "✓ Synced"}
+                {syncState === "error" && "Sync failed"}
+              </button>
+            </div>
+          )}
           <nav>
             <button onClick={() => setView("doc")} data-active={view === "doc"}>Docs</button>
             <button onClick={() => setView("graph")} data-active={view === "graph"}>Graph</button>
