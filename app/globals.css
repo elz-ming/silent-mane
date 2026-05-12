@@ -217,6 +217,8 @@ body {
 .tree-hline:hover::before { background: var(--accent); }
 
 .content {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -256,8 +258,12 @@ body {
 .editor-host [data-mode="rendered"] .toastui-editor-toolbar,
 .editor-host [data-mode="rendered"] .toastui-editor-md-splitter,
 .editor-host [data-mode="rendered"] .toastui-editor-md-container .toastui-editor { display: none !important; }
+.editor-host [data-mode="rendered"] .toastui-editor-defaultUI,
+.editor-host [data-mode="rendered"] .toastui-editor-main,
+.editor-host [data-mode="rendered"] .toastui-editor-md-container { width: 100% !important; max-width: none !important; }
 .editor-host [data-mode="rendered"] .toastui-editor-md-preview {
   width: 100% !important;
+  max-width: none !important;
   border-left: none !important;
   padding: 20px 24px !important;
 }
