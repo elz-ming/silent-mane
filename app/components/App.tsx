@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUser } from "@clerk/nextjs";
 import { GraphView } from "./GraphView";
 import { DocEditor } from "./DocEditor";
 import type { DocIndex, DocNode } from "@/src/web/types";
@@ -168,13 +169,24 @@ type View = "doc" | "graph";
 type DocMode = "raw" | "rendered";
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
 
+interface ConflictFile {
+  path: string;
+  localHash: string;
+  cloudUploadedAt: string;
+  manifestSyncedAt: string;
+}
+
 function generatePat(): string {
   const bytes = new Uint8Array(24);
   crypto.getRandomValues(bytes);
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-export function App() {
+export function App({ namespace }: { namespace: string }) {
+  const { user, isSignedIn } = useUser();
+  const isOwnNamespace = isSignedIn && user?.id === namespace;
+  const isPublicNamespace = namespace === "public";
+
   const [index, setIndex] = useState<DocIndex | null>(null);
   const [activePath, setActivePath] = useState<string | null>(null);
   const [view, setView] = useState<View>("doc");
@@ -189,21 +201,45 @@ export function App() {
   const [patCopied, setPatCopied] = useState(false);
   const [canSync, setCanSync] = useState(false);
   const [syncState, setSyncState] = useState<"idle" | "syncing" | "done" | "error">("idle");
+  const [conflicts, setConflicts] = useState<ConflictFile[]>([]);
+  const [resolvingPath, setResolvingPath] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/sync").then((r) => r.json()).then((d) => setCanSync(d.canSync)).catch(() => {});
   }, []);
 
-  const handleSync = useCallback(async () => {
+  const handleSync = useCallback(async (force = false) => {
     setSyncState("syncing");
     try {
-      const res = await fetch("/api/sync", { method: "POST" });
+      const url = force ? "/api/sync?force=true" : "/api/sync";
+      const res = await fetch(url, { method: "POST" });
       if (!res.ok) throw new Error(await res.text());
-      setSyncState("done");
-      setTimeout(() => setSyncState("idle"), 3000);
+      const data = await res.json();
+      if (data.conflicts && data.conflicts.length > 0) {
+        setConflicts(data.conflicts);
+        setSyncState("idle");
+      } else {
+        setConflicts([]);
+        setSyncState("done");
+        setTimeout(() => setSyncState("idle"), 3000);
+      }
     } catch {
       setSyncState("error");
       setTimeout(() => setSyncState("idle"), 3000);
+    }
+  }, []);
+
+  const handleResolve = useCallback(async (filePath: string, action: "keep-local" | "keep-cloud") => {
+    setResolvingPath(filePath);
+    try {
+      await fetch("/api/sync/resolve", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, path: filePath }),
+      });
+      setConflicts((prev) => prev.filter((c) => c.path !== filePath));
+    } finally {
+      setResolvingPath(null);
     }
   }, []);
 
@@ -241,7 +277,7 @@ export function App() {
 
   const loadIndex = useCallback(async (preserveActive: boolean) => {
     try {
-      const res = await fetch("/api/index", { cache: "no-store" });
+      const res = await fetch(`/api/index?ns=${encodeURIComponent(namespace)}`, { cache: "no-store" });
       if (!res.ok) throw new Error(`index fetch failed: ${res.status}`);
       const data: DocIndex = await res.json();
       setIndex(data);
@@ -254,7 +290,7 @@ export function App() {
     } catch {
       setIndex({ docs: [], edges: [], entry: null });
     }
-  }, []);
+  }, [namespace]);
 
   useEffect(() => {
     loadIndex(false);
@@ -307,7 +343,7 @@ export function App() {
     setSaveState("saving");
     try {
       localEdit.current = true;
-      const res = await fetch(`/api/doc?path=${encodeURIComponent(path)}`, {
+      const res = await fetch(`/api/doc?path=${encodeURIComponent(path)}&ns=${encodeURIComponent(namespace)}`, {
         method: "PUT",
         headers: { "content-type": "text/markdown" },
         body: content,
@@ -318,7 +354,7 @@ export function App() {
       setSaveState("error");
       localEdit.current = false;
     }
-  }, []);
+  }, [namespace]);
 
   const handleWikiLinkClick = useCallback((title: string) => {
     const match = index?.docs.find((d) => d.title.toLowerCase() === title.toLowerCase());
@@ -337,31 +373,77 @@ export function App() {
       <div className="sidebar-wrap">
         <aside className="sidebar" data-collapsed={sidebarCollapsed}>
           <h1>EMDEE</h1>
-          <div className="pat-section">
-            <span className="pat-label">PAT Token</span>
-            <code className="pat-value">{patToken ? `${patToken.slice(0, 8)}…` : "—"}</code>
-            <div className="pat-actions">
-              <button className="pat-btn" onClick={copyPat} type="button" title="Copy token">
-                {patCopied ? "✓" : "Copy"}
-              </button>
-              <button className="pat-btn" onClick={rotatePat} type="button" title="Rotate token">
-                Rotate
-              </button>
+          {isOwnNamespace ? (
+            <div className="pat-section">
+              <span className="pat-label">PAT Token</span>
+              <code className="pat-value">{patToken ? `${patToken.slice(0, 8)}…` : "—"}</code>
+              <div className="pat-actions">
+                <button className="pat-btn" onClick={copyPat} type="button" title="Copy token">
+                  {patCopied ? "✓" : "Copy"}
+                </button>
+                <button className="pat-btn" onClick={rotatePat} type="button" title="Rotate token">
+                  Rotate
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="pat-section">
+              <a href="/sign-in" className="signin-btn">
+                {isPublicNamespace ? "Sign in" : "Sign in to edit"}
+              </a>
+              {isSignedIn && !isPublicNamespace && (
+                <span style={{ fontSize: 11, color: "var(--muted)", textAlign: "center" }}>
+                  Viewing someone else&apos;s vault
+                </span>
+              )}
+            </div>
+          )}
           {canSync && (
             <div className="sync-section">
               <button
                 className="sync-btn"
-                onClick={handleSync}
+                onClick={() => handleSync(false)}
                 disabled={syncState === "syncing"}
                 type="button"
               >
-                {syncState === "idle" && "Push to Cloud"}
+                {syncState === "idle" && (conflicts.length > 0 ? `${conflicts.length} conflict${conflicts.length > 1 ? "s" : ""}` : "Push to Cloud")}
                 {syncState === "syncing" && "Syncing…"}
                 {syncState === "done" && "✓ Synced"}
                 {syncState === "error" && "Sync failed"}
               </button>
+              {conflicts.length > 0 && (
+                <div className="conflict-panel">
+                  <div className="conflict-header">
+                    <span>Conflicts — both sides changed</span>
+                    <button className="conflict-force-btn" onClick={() => handleSync(true)} type="button">
+                      Push all local
+                    </button>
+                  </div>
+                  {conflicts.map((c) => (
+                    <div key={c.path} className="conflict-row">
+                      <span className="conflict-path" title={c.path}>{c.path}</span>
+                      <div className="conflict-actions">
+                        <button
+                          className="conflict-btn"
+                          onClick={() => handleResolve(c.path, "keep-local")}
+                          disabled={resolvingPath === c.path}
+                          type="button"
+                        >
+                          Mine
+                        </button>
+                        <button
+                          className="conflict-btn"
+                          onClick={() => handleResolve(c.path, "keep-cloud")}
+                          disabled={resolvingPath === c.path}
+                          type="button"
+                        >
+                          Cloud
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <nav>
