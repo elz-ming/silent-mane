@@ -3,6 +3,7 @@ import { list } from "@vercel/blob";
 import path from "node:path";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // Paths shown in the public namespace (product docs only, no personal content).
 // Matches EMDEE.md, VAULT.md, and the vault-meta subtree + sample branch.
