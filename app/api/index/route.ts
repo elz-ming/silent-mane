@@ -25,6 +25,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const ns = url.searchParams.get("ns") ?? "public";
   const docsDir = process.env.EMDEE_DOCS;
+  console.log("[index] START ns=%s docsDir=%s supa=%s secret=%s", ns, docsDir ?? "none", !!process.env.NEXT_PUBLIC_SUPABASE_URL, !!process.env.SUPABASE_SECRET_KEY);
 
   // Local dev: read from filesystem
   if (docsDir) {
