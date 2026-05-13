@@ -221,12 +221,15 @@ export function buildIndexFromContents(files: { path: string; content: string }[
     }
   }
 
+  // Landing-doc resolution. INFO is the preferred starting point — it
+  // explains the conventions, so visitors get oriented before drilling.
+  // EMDEE is the secondary fallback for vaults that don't have INFO.
   const overrideEntry = process.env.EMDEE_ENTRY?.toLowerCase();
+  const findByPath = (p: string) => docs.find((d) => d.path.toLowerCase() === p)?.path;
   const entry =
-    (overrideEntry
-      ? docs.find((d) => d.path.toLowerCase() === overrideEntry)?.path
-      : undefined) ??
-    docs.find((d) => d.path.toLowerCase() === "emdee.md")?.path ??
+    (overrideEntry ? findByPath(overrideEntry) : undefined) ??
+    findByPath("info.md") ??
+    findByPath("emdee.md") ??
     null;
 
   return { docs, edges, entry };
