@@ -8,7 +8,7 @@ interface Props {
 
 export default async function UserWorkspace({ params }: Props) {
   const { userId: currentUserId } = await auth();
-  if (!currentUserId) redirect("/sign-in");
   const { userId } = await params;
+  if (currentUserId !== userId) redirect("/");
   return <AppShell namespace={userId} />;
 }
