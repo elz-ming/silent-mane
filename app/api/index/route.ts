@@ -5,8 +5,6 @@ import path from "node:path";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Paths shown in the public namespace (product docs only, no personal content).
-// Matches EMDEE.md, VAULT.md, and the vault-meta subtree + sample branch.
 function isPublicPath(p: string): boolean {
   const top = p.split("/")[0];
   const publicRoots = new Set(["EMDEE.md", "VAULT.md", "INFO.md", "INSTRUCTIONS.md", "BRAIN.md", "WORKFLOWS.md", "SAMPLE.md"]);
@@ -14,93 +12,54 @@ function isPublicPath(p: string): boolean {
   return publicRoots.has(p) || publicDirs.has(top);
 }
 
+function filterPublic<T extends { docs: { path: string }[]; edges: { from: string; to: string }[] }>(index: T): T {
+  const publicDocs = new Set(index.docs.filter((d) => isPublicPath(d.path)).map((d) => d.path));
+  return {
+    ...index,
+    docs: index.docs.filter((d) => publicDocs.has(d.path)),
+    edges: index.edges.filter((e) => publicDocs.has(e.from) && publicDocs.has(e.to)),
+  };
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const ns = url.searchParams.get("ns") ?? "public";
   const docsDir = process.env.EMDEE_DOCS;
-  if (url.searchParams.has("_dbg")) {
-    return Response.json({ docsDir: docsDir ?? null, hasToken: !!process.env.BLOB_READ_WRITE_TOKEN, runtime: process.version });
-  }
 
-  // Local dev: read from filesystem; filter to public-safe docs when ns=public
+  // Local dev: read from filesystem
   if (docsDir) {
     const index = await buildIndex(path.resolve(docsDir));
-    if (ns === "public") {
-      const filtered = {
-        ...index,
-        docs: index.docs.filter((d) => isPublicPath(d.path)),
-        edges: index.edges.filter((e) => {
-          const fromPublic = index.docs.some((d) => d.path === e.from && isPublicPath(d.path));
-          const toPublic = index.docs.some((d) => d.path === e.to && isPublicPath(d.path));
-          return fromPublic && toPublic;
-        }),
-      };
-      return Response.json(filtered, { headers: { "Cache-Control": "no-store" } });
-    }
-    return Response.json(index, { headers: { "Cache-Control": "no-store" } });
+    return Response.json(
+      ns === "public" ? filterPublic(index) : index,
+      { headers: { "Cache-Control": "no-store" } }
+    );
   }
 
-  // Cloud: read from Vercel Blob under the given namespace prefix
+  // Cloud: read from Vercel Blob
   const token = process.env.BLOB_READ_WRITE_TOKEN;
   if (!token) {
-    return Response.json({ docs: [], edges: [], entry: null, _debug: "no token" }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json({ docs: [], edges: [], entry: null }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const prefix = ns.endsWith("/") ? ns : `${ns}/`;
   const { blobs } = await list({ token, prefix });
   const mdBlobs = blobs.filter((b) => b.pathname.endsWith(".md"));
-  if (ns === "public") {
-    const firstBlob = mdBlobs[0];
-    const testFetch = firstBlob ? await fetch(firstBlob.url, { headers: { Authorization: `Bearer ${token}` } }) : null;
-    const testContent = testFetch?.ok ? (await testFetch.text()).slice(0, 40) : `fetch-status:${testFetch?.status ?? "no-blob"}`;
-    return Response.json({ docs: [], edges: [], entry: null, _debug: `blobs:${mdBlobs.length} first:${firstBlob?.pathname} fetch:${testContent}` }, { headers: { "Cache-Control": "no-store" } });
-  }
 
-  // Public namespace with no Blob docs: fall back to bundled templates
-  if (mdBlobs.length === 0 && ns === "public") {
-    const templatesDir = path.join(process.cwd(), "templates");
-    try {
-      const templateIndex = await buildIndex(templatesDir);
-      const filtered = {
-        ...templateIndex,
-        docs: templateIndex.docs.filter((d) => isPublicPath(d.path)),
-        edges: templateIndex.edges.filter((e) => {
-          const fromPublic = templateIndex.docs.some((d) => d.path === e.from && isPublicPath(d.path));
-          const toPublic = templateIndex.docs.some((d) => d.path === e.to && isPublicPath(d.path));
-          return fromPublic && toPublic;
-        }),
-      };
-      return Response.json(filtered, { headers: { "Cache-Control": "no-store" } });
-    } catch {
-      return Response.json({ docs: [], edges: [], entry: null }, { headers: { "Cache-Control": "no-store" } });
-    }
+  if (mdBlobs.length === 0) {
+    return Response.json({ docs: [], edges: [], entry: null }, { headers: { "Cache-Control": "no-store" } });
   }
 
   const files = await Promise.all(
     mdBlobs.map(async (b) => {
       const res = await fetch(b.url, { headers: { Authorization: `Bearer ${token}` } });
       const content = res.ok ? await res.text() : "";
-      return {
-        path: b.pathname.slice(prefix.length),
-        content,
-      };
+      return { path: b.pathname.slice(prefix.length), content };
     })
   );
 
   const index = buildIndexFromContents(files);
-
-  if (ns === "public") {
-    const filtered = {
-      ...index,
-      docs: index.docs.filter((d) => isPublicPath(d.path)),
-      edges: index.edges.filter((e) => {
-        const fromPublic = index.docs.some((d) => d.path === e.from && isPublicPath(d.path));
-        const toPublic = index.docs.some((d) => d.path === e.to && isPublicPath(d.path));
-        return fromPublic && toPublic;
-      }),
-    };
-    return Response.json(filtered, { headers: { "Cache-Control": "no-store" } });
-  }
-
-  return Response.json(index, { headers: { "Cache-Control": "no-store" } });
+  return Response.json(
+    ns === "public" ? filterPublic(index) : index,
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }
