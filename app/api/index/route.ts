@@ -25,7 +25,6 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const ns = url.searchParams.get("ns") ?? "public";
   const docsDir = process.env.EMDEE_DOCS;
-  if (url.searchParams.has("_dbg")) return Response.json({ docsDir: docsDir ?? null, hasToken: !!process.env.BLOB_READ_WRITE_TOKEN });
 
   // Local dev: read from filesystem
   if (docsDir) {
