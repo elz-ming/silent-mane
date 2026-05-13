@@ -154,6 +154,12 @@ function placeLayout(
   page: number
 ): { nodes: PlacedNode[]; edges: PlacedEdge[]; totalLayer1: number } {
   const titleFor = (p: string) => index.docs.find((d) => d.path === p)?.title ?? p;
+  const focalTitle = titleFor(focalId);
+  const shortLabel = (p: string) => {
+    const t = titleFor(p);
+    const prefix = focalTitle + " — ";
+    return t.startsWith(prefix) ? t.slice(prefix.length) : t;
+  };
 
   const allLayer1 = neighborsOf(index, focalId);
   const totalLayer1 = allLayer1.length;
@@ -175,7 +181,7 @@ function placeLayout(
     layer1AnglesById.set(n.id, angle);
     placed.set(n.id, {
       id: n.id,
-      label: titleFor(n.id),
+      label: shortLabel(n.id),
       kind: "layer1",
       category: categoryFor(n.id),
       position: { x: Math.cos(angle) * RADIUS_LAYER1, y: Math.sin(angle) * RADIUS_LAYER1 },
@@ -238,7 +244,7 @@ function placeLayout(
       const angle = baseAngle + offset;
       placed.set(n.id, {
         id: n.id,
-        label: titleFor(n.id),
+        label: shortLabel(n.id),
         kind: "layer2",
         category: categoryFor(n.id),
         position: { x: Math.cos(angle) * RADIUS_LAYER2, y: Math.sin(angle) * RADIUS_LAYER2 },
