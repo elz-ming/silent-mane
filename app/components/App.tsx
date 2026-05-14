@@ -585,6 +585,22 @@ export function App({ namespace }: { namespace: string }) {
                   <code className="pat-value connect-cmd" title={cloudUserId}>
                     {cloudUserId.length > 28 ? cloudUserId.slice(0, 28) + "…" : cloudUserId}
                   </code>
+                  <button
+                    className={`signin-btn${conflicts.length > 0 ? " has-conflicts" : ""}`}
+                    onClick={() => (conflicts.length > 0 ? setConflictModalOpen(true) : handleSync(false))}
+                    disabled={syncState === "syncing"}
+                    type="button"
+                  >
+                    {syncState === "syncing"
+                      ? "Syncing…"
+                      : syncState === "done"
+                      ? "✓ Synced"
+                      : syncState === "error"
+                      ? "⚠ Sync failed"
+                      : conflicts.length > 0
+                      ? `${conflicts.length} conflict${conflicts.length > 1 ? "s" : ""}`
+                      : "Push to Cloud"}
+                  </button>
                   <button className="signin-btn" onClick={unlinkCloudAccount} type="button" style={{ background: "transparent", color: "var(--muted)", border: "1px solid var(--border)" }}>
                     Disconnect
                   </button>
@@ -716,30 +732,6 @@ export function App({ namespace }: { namespace: string }) {
         </button>
       </div>
       <main className="content">
-        {canSync && (
-          <div className="content-topbar">
-            <span className="spacer" />
-            <button
-              className={`sync-inline-btn${conflicts.length > 0 ? " has-conflicts" : ""}`}
-              onClick={() => conflicts.length > 0 ? setConflictModalOpen(true) : handleSync(false)}
-              disabled={syncState === "syncing" || !cloudUserId}
-              title={!cloudUserId ? "Connect a cloud account first" : undefined}
-              type="button"
-            >
-              {syncState === "syncing"
-                ? "Syncing…"
-                : syncState === "done"
-                ? "✓ Synced"
-                : syncState === "error"
-                ? "⚠ Sync failed"
-                : !cloudUserId
-                ? "Connect cloud account →"
-                : conflicts.length > 0
-                ? `${conflicts.length} conflict${conflicts.length > 1 ? "s" : ""}`
-                : "Push to Cloud"}
-            </button>
-          </div>
-        )}
         {view === "main" && (
           <div className="main-split">
             <div className="graph-pane">
