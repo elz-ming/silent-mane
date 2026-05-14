@@ -539,17 +539,6 @@ export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddA
   const totalPages = Math.max(1, Math.ceil(totalLayer1 / PAGE_SIZE));
   const pageStart = page * PAGE_SIZE;
 
-  const goBack = () => {
-    setHistory((h) => {
-      if (h.length === 0) return h;
-      const next = [...h];
-      const prev = next.pop()!;
-      setFocalId(prev);
-      setPage(0);
-      return next;
-    });
-  };
-
   const zoomTo = (level: number, animate = true) => {
     const cy = cyRef.current;
     if (!cy) return;
@@ -591,9 +580,7 @@ export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddA
   return (
     <div className="graph-wrap">
       <div className="graph-bar">
-        <button onClick={goBack} disabled={history.length === 0}>← Back</button>
         <span className="graph-focal">Focus: <strong>{focalDoc.title}</strong></span>
-        <button onClick={() => onSelect(focalId!)}>Open doc</button>
         {onAddChild && (
           <button className="btn-action" onClick={() => onAddChild(focalId!, focalDoc.title)}>+ Child</button>
         )}

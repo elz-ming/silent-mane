@@ -226,6 +226,7 @@ export function App({ namespace }: { namespace: string }) {
   const [resolvingPath, setResolvingPath] = useState<string | null>(null);
   const [mcpCommand, setMcpCommand] = useState<string | null>(null);
   const [mcpCopied, setMcpCopied] = useState(false);
+  const [mcpUrlCopied, setMcpUrlCopied] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [addChildCtx, setAddChildCtx] = useState<GraphModalContext | null>(null);
   const [addChildTitle, setAddChildTitle] = useState("");
@@ -257,6 +258,17 @@ export function App({ namespace }: { namespace: string }) {
       setTimeout(() => setMcpCopied(false), 2500);
     });
   }, [mcpCommand, isOwnNamespace, patToken]);
+
+  // URL for adding this server as a Claude.ai Custom Connector. The OAuth
+  // flow at /oauth/* handles auth on first connect — no token in the URL.
+  const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/api/mcp` : "";
+  const copyMcpUrl = useCallback(() => {
+    if (!mcpUrl) return;
+    navigator.clipboard.writeText(mcpUrl).then(() => {
+      setMcpUrlCopied(true);
+      setTimeout(() => setMcpUrlCopied(false), 2500);
+    });
+  }, [mcpUrl]);
 
   const handleSync = useCallback(async (force = false) => {
     setSyncState("syncing");
@@ -611,6 +623,42 @@ export function App({ namespace }: { namespace: string }) {
               ) : (
                 <span style={{ fontSize: 11, color: "var(--muted)" }}>Loading…</span>
               )}
+            </div>
+          )}
+          {isOwnNamespace && (
+            <div className="connect-section">
+              <span className="pat-label">Connect to Claude.ai</span>
+              <div className="connect-cmd-row">
+                <code className="pat-value connect-cmd" title={mcpUrl}>
+                  {mcpUrl.length > 28 ? mcpUrl.slice(0, 28) + "…" : mcpUrl}
+                </code>
+                <button
+                  className={`connect-copy-icon${mcpUrlCopied ? " copied" : ""}`}
+                  onClick={copyMcpUrl}
+                  type="button"
+                  title="Copy Claude.ai connector URL"
+                  aria-label="Copy Claude.ai connector URL"
+                >
+                  {mcpUrlCopied ? (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <path d="M2.5 7.5L5.5 10.5L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                      <rect x="4.5" y="1.5" width="8" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+                      <path d="M2.5 4.5H2A1.5 1.5 0 0 0 .5 6v6A1.5 1.5 0 0 0 2 13.5h5.5A1.5 1.5 0 0 0 9 12v-.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <a
+                href="https://claude.ai/settings/connectors"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ fontSize: 11, color: "var(--accent)", textDecoration: "none", marginTop: 4 }}
+              >
+                Open Claude.ai connectors →
+              </a>
             </div>
           )}
           {isPublicNamespace && !isSignedIn && (
