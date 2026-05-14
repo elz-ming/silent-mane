@@ -2,6 +2,18 @@ import { adminClient } from "@/src/lib/supabase/admin";
 import type { VaultFile, VaultStorage } from "./VaultStorage";
 
 const BUCKET = "vaults";
+const CACHE_TABLE = "vault_files";
+
+/**
+ * Split a full storage path ("user_X/foo/bar.md") into the cache table's
+ * composite key (namespace, file_path). Returns null for unprefixed paths
+ * which shouldn't happen in practice but we tolerate.
+ */
+function splitNs(p: string): { namespace: string; file_path: string } | null {
+  const i = p.indexOf("/");
+  if (i === -1) return null;
+  return { namespace: p.slice(0, i), file_path: p.slice(i + 1) };
+}
 
 export class SupabaseStorage implements VaultStorage {
   private bucket() {
@@ -35,23 +47,129 @@ export class SupabaseStorage implements VaultStorage {
     return results;
   }
 
+  /**
+   * Bulk-fetch every file under `prefix` via the vault_files cache. The
+   * cache is a derived index of Storage — if it's empty for a namespace
+   * we fall back to listing Storage and downloading each file, then
+   * repopulate the cache so subsequent reads are fast.
+   */
+  async listWithContent(prefix?: string): Promise<VaultFile[]> {
+    const folder = prefix ? prefix.replace(/\/$/, "") : "";
+    // Cache is keyed by namespace; only fast-path when we have one.
+    if (!folder || folder.includes("/")) {
+      return this.bulkReadFromStorage(folder);
+    }
+
+    const admin = adminClient();
+    const { data, error } = await admin
+      .from(CACHE_TABLE)
+      .select("file_path, content, updated_at")
+      .eq("namespace", folder);
+
+    if (!error && data && data.length > 0) {
+      return data.map((r) => ({
+        path: `${folder}/${r.file_path}`,
+        content: r.content,
+        updatedAt: r.updated_at,
+      }));
+    }
+
+    // Cache miss (or error) — pay the slow path once and repopulate.
+    const files = await this.bulkReadFromStorage(folder);
+    if (files.length > 0) {
+      const rows = files
+        .map((f) => {
+          const split = splitNs(f.path);
+          if (!split) return null;
+          return { namespace: split.namespace, file_path: split.file_path, content: f.content };
+        })
+        .filter((r): r is { namespace: string; file_path: string; content: string } => r !== null);
+      if (rows.length > 0) {
+        await admin.from(CACHE_TABLE).upsert(rows, { onConflict: "namespace,file_path" });
+      }
+    }
+    return files;
+  }
+
+  private async bulkReadFromStorage(folder: string): Promise<VaultFile[]> {
+    const listed = await this.walkFolder(folder);
+    return Promise.all(
+      listed.map(async (f) => ({
+        path: f.path,
+        content: (await this.read(f.path)) ?? "",
+        updatedAt: f.updatedAt,
+      }))
+    );
+  }
+
   async read(filePath: string): Promise<string | null> {
+    const split = splitNs(filePath);
+    if (split) {
+      const { data: cacheRow } = await adminClient()
+        .from(CACHE_TABLE)
+        .select("content")
+        .match({ namespace: split.namespace, file_path: split.file_path })
+        .maybeSingle();
+      if (cacheRow) return (cacheRow.content as string) ?? "";
+    }
+    // Fall back to Storage for unsplit paths or cache misses; repopulate
+    // the cache on success so subsequent reads stay fast.
     const { data, error } = await this.bucket().download(filePath);
     if (error || !data) return null;
-    return await data.text();
+    const content = await data.text();
+    if (split) {
+      try {
+        await adminClient()
+          .from(CACHE_TABLE)
+          .upsert(
+            { namespace: split.namespace, file_path: split.file_path, content, updated_at: new Date().toISOString() },
+            { onConflict: "namespace,file_path" }
+          );
+      } catch {}
+    }
+    return content;
   }
 
   async write(filePath: string, content: string): Promise<void> {
+    // Storage is canonical — fail here propagates.
     const blob = new Blob([content], { type: "text/markdown; charset=utf-8" });
     const { error } = await this.bucket().upload(filePath, blob, {
       upsert: true,
       contentType: "text/markdown; charset=utf-8",
     });
     if (error) throw new Error(`storage write failed: ${error.message}`);
+
+    // Cache mirror — best-effort. If this fails the cache is stale; on
+    // next read we'd return stale content, but a rebuild script
+    // (scripts/backfill-vault-files.mjs) restores parity.
+    const split = splitNs(filePath);
+    if (!split) return;
+    try {
+      const { error: cacheErr } = await adminClient()
+        .from(CACHE_TABLE)
+        .upsert(
+          { namespace: split.namespace, file_path: split.file_path, content, updated_at: new Date().toISOString() },
+          { onConflict: "namespace,file_path" }
+        );
+      if (cacheErr) console.error(`vault_files cache write failed for ${filePath}:`, cacheErr.message);
+    } catch (e) {
+      console.error(`vault_files cache write threw for ${filePath}:`, e);
+    }
   }
 
   async delete(filePath: string): Promise<void> {
     await this.bucket().remove([filePath]);
+    const split = splitNs(filePath);
+    if (!split) return;
+    try {
+      const { error: cacheErr } = await adminClient()
+        .from(CACHE_TABLE)
+        .delete()
+        .match({ namespace: split.namespace, file_path: split.file_path });
+      if (cacheErr) console.error(`vault_files cache delete failed for ${filePath}:`, cacheErr.message);
+    } catch (e) {
+      console.error(`vault_files cache delete threw for ${filePath}:`, e);
+    }
   }
 
   async exists(filePath: string): Promise<boolean> {

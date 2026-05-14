@@ -43,6 +43,17 @@ export class FilesystemStorage implements VaultStorage {
     }
   }
 
+  async listWithContent(prefix?: string): Promise<VaultFile[]> {
+    const listed = await this.list(prefix);
+    return Promise.all(
+      listed.map(async (f) => ({
+        path: f.path,
+        content: (await this.read(f.path)) ?? "",
+        updatedAt: f.updatedAt,
+      }))
+    );
+  }
+
   async read(filePath: string): Promise<string | null> {
     try {
       return await readFile(path.join(this.rootDir, filePath), "utf8");

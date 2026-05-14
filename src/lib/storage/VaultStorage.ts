@@ -7,6 +7,13 @@ export interface VaultFile {
 export interface VaultStorage {
   /** List all .md files, optionally filtered to a path prefix. */
   list(prefix?: string): Promise<VaultFile[]>;
+  /**
+   * Bulk-read every .md file under `prefix` in one shot. Implementations
+   * are encouraged to use a single round-trip — SupabaseStorage hits the
+   * vault_files Postgres cache so /api/index doesn't pay per-file HTTPS.
+   * FilesystemStorage just reads from disk.
+   */
+  listWithContent(prefix?: string): Promise<VaultFile[]>;
   /** Read a single file. Returns null if not found. */
   read(path: string): Promise<string | null>;
   /** Write (create or overwrite) a file. */

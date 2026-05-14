@@ -55,21 +55,21 @@ async function hasShareAccess(granteeId: string, ownerId: string, relPath: strin
 
 /**
  * Builds the index of the user's own vault, then appends docs shared with
- * them. Edges from the two sub-indexes don't cross-link — wiki-link
- * resolution stays within each owner's namespace, so the grantee can
- * navigate shared docs by title without leaking back to their own vault.
+ * them. Both sub-indexes are sourced via storage.listWithContent / the
+ * cache so the bulk read is one round-trip. Edges from the two
+ * sub-indexes don't cross-link — wiki-link resolution stays within each
+ * owner's namespace, so the grantee can navigate shared docs by title
+ * without leaking back to their own vault.
  */
 export async function loadVaultIndex(ctx: ToolContext): Promise<DocIndex> {
   if (ctx.mode === "local") return buildIndex(ctx.docsDir);
 
   const ownPrefix = `${ctx.userId}/`;
-  const ownFiles = await ctx.storage.list(ownPrefix);
-  const ownWithContent = await Promise.all(
-    ownFiles.map(async (f) => ({
-      path: f.path.slice(ownPrefix.length),
-      content: (await ctx.storage.read(f.path)) ?? "",
-    }))
-  );
+  const ownFiles = await ctx.storage.listWithContent(ownPrefix);
+  const ownWithContent = ownFiles.map((f) => ({
+    path: f.path.slice(ownPrefix.length),
+    content: f.content,
+  }));
   const ownIndex = buildIndexFromContents(ownWithContent);
 
   const shared = await listSharedDocsForGrantee(ctx.userId);

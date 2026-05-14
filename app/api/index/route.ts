@@ -16,13 +16,11 @@ const NO_STORE = { headers: { "Cache-Control": "no-store" } };
  * they see the same intro tree visitors see at `/`.
  */
 async function seedFromPublic(storage: VaultStorage, ns: string): Promise<void> {
-  const seeds = await storage.list("public/");
+  const seeds = await storage.listWithContent("public/");
   await Promise.all(
     seeds.map(async (f) => {
-      const content = await storage.read(f.path);
-      if (content === null) return;
       const relative = f.path.slice("public/".length);
-      await storage.write(`${ns}/${relative}`, content);
+      await storage.write(`${ns}/${relative}`, f.content);
     })
   );
 }
@@ -55,18 +53,20 @@ export async function GET(request: Request) {
     ensureProfile(userId).catch(() => {});
   }
 
-  let listed: Awaited<ReturnType<typeof storage.list>>;
+  let listed: Awaited<ReturnType<typeof storage.listWithContent>>;
   try {
-    listed = await storage.list(prefix || undefined);
+    listed = await storage.listWithContent(prefix || undefined);
   } catch {
     listed = [];
   }
 
-  // First-visit seed: copy public/ → {userId}/ once (cloud only).
+  // First-visit seed: copy public/ → {userId}/ once (cloud only). Seed
+  // writes go through storage.write which dual-updates the cache, so the
+  // re-list after seeding hits the fast path.
   if (listed.length === 0 && canSeedIfEmpty) {
     await seedFromPublic(storage, ns);
     try {
-      listed = await storage.list(prefix);
+      listed = await storage.listWithContent(prefix);
     } catch {
       listed = [];
     }
@@ -76,12 +76,10 @@ export async function GET(request: Request) {
     return Response.json(EMPTY, NO_STORE);
   }
 
-  const files = await Promise.all(
-    listed.map(async (f) => ({
-      path: prefix ? f.path.slice(prefix.length) : f.path,
-      content: (await storage.read(f.path)) ?? "",
-    }))
-  );
+  const files = listed.map((f) => ({
+    path: prefix ? f.path.slice(prefix.length) : f.path,
+    content: f.content,
+  }));
 
   const index = buildIndexFromContents(files);
   return Response.json(index, NO_STORE);

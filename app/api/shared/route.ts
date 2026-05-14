@@ -1,6 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
 import { adminClient } from "@/src/lib/supabase/admin";
-import { SupabaseStorage } from "@/src/lib/storage/SupabaseStorage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,14 +38,20 @@ export async function GET() {
 
   if (error) return Response.json({ docs: [], error: error.message }, { status: 500 });
 
-  const storage = new SupabaseStorage();
   const rows = (data ?? []) as ShareRow[];
+  if (rows.length === 0) return Response.json({ docs: [] });
 
+  // N parallel hits against the cache — each is one fast Postgres
+  // query. Rows are typically small (a handful of shares per user).
   const docs = await Promise.all(
     rows.map(async (r) => {
       const owner = Array.isArray(r.owner) ? r.owner[0] : r.owner;
-      const fullPath = `${r.owner_id}/${r.path_prefix}`;
-      const content = (await storage.read(fullPath).catch(() => null)) ?? "";
+      const { data: cacheRow } = await admin
+        .from("vault_files")
+        .select("content")
+        .match({ namespace: r.owner_id, file_path: r.path_prefix })
+        .maybeSingle();
+      const content = (cacheRow?.content as string | undefined) ?? "";
       return {
         shareId: r.id,
         ownerId: r.owner_id,
