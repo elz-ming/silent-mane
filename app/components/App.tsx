@@ -19,6 +19,7 @@ interface SharedDoc {
 }
 
 const SHARED_PREFIX = "__shared:";
+const SHARED_ROOT_PATH = "__shared:__root";
 const sharedActiveKey = (s: SharedDoc) => `${SHARED_PREFIX}${s.ownerId}:${s.path}`;
 
 interface TreeNode {
@@ -469,6 +470,18 @@ export function App({ namespace }: { namespace: string }) {
   }, [activePath, sharedDocs]);
 
   const activeDoc = useMemo<DocNode | null>(() => {
+    if (activePath === SHARED_ROOT_PATH) {
+      return {
+        path: SHARED_ROOT_PATH,
+        title: "SHARED",
+        content: "# SHARED\n\n> Documents others have shared with you appear here.\n",
+        summary: "Documents others have shared with you appear here.",
+        parents: [],
+        children: [],
+        associates: [],
+        mentions: [],
+      };
+    }
     if (activeSharedDoc) {
       return {
         path: activeSharedDoc.path,
@@ -484,10 +497,53 @@ export function App({ namespace }: { namespace: string }) {
     return index?.docs.find((d) => d.path === activePath) ?? null;
   }, [index, activePath, activeSharedDoc]);
 
-  const docTree = useMemo(
+  const rawDocTree = useMemo(
     () => (index ? buildDocTree(index) : []),
     [index]
   );
+
+  // Inject a synthetic SHARED branch under VAULT when there are docs shared
+  // with this user. The SHARED node and its children aren't real docs on
+  // disk — clicking them sets a sentinel activePath ("__shared:..." or
+  // "__shared:__root") that the doc pane treats as read-only.
+  const docTree = useMemo<TreeNode[]>(() => {
+    if (sharedDocs.length === 0) return rawDocTree;
+    const sharedChildren: TreeNode[] = sharedDocs.map((s) => ({
+      doc: {
+        path: sharedActiveKey(s),
+        title: s.title,
+        content: s.content,
+        summary: "",
+        parents: [],
+        children: [],
+        associates: [],
+        mentions: [],
+      },
+      depth: 0,
+      children: [],
+    }));
+    const sharedNode: TreeNode = {
+      doc: {
+        path: SHARED_ROOT_PATH,
+        title: "SHARED",
+        content: "# SHARED\n\n> Documents others have shared with you appear here.\n",
+        summary: "Documents others have shared with you appear here.",
+        parents: [],
+        children: [],
+        associates: [],
+        mentions: [],
+      },
+      depth: 0,
+      children: sharedChildren,
+    };
+    const vaultIdx = rawDocTree.findIndex((t) => t.doc.title.toUpperCase() === "VAULT");
+    if (vaultIdx === -1) return [...rawDocTree, sharedNode];
+    const vault = rawDocTree[vaultIdx];
+    const updatedVault: TreeNode = { ...vault, children: [...vault.children, sharedNode] };
+    const next = rawDocTree.slice();
+    next[vaultIdx] = updatedVault;
+    return next;
+  }, [rawDocTree, sharedDocs]);
 
   // Collapse all parent nodes on first load; leave user-driven toggles alone after that.
   useEffect(() => {
@@ -662,14 +718,14 @@ export function App({ namespace }: { namespace: string }) {
 
   const handleEdit = useCallback((next: string) => {
     if (!activePath) return;
-    // Shared docs are read-only in MVP — editor change events shouldn't
-    // dirty the save state for them. (DocEditor also drops onChange when
-    // readOnly is set, this is belt-and-suspenders.)
-    if (activeSharedDoc) return;
+    // Anything under the SHARED branch (the synthetic root or a per-doc
+    // sentinel) is read-only in MVP — drop save events. (DocEditor also
+    // drops onChange when readOnly is set; this is belt-and-suspenders.)
+    if (activePath.startsWith(SHARED_PREFIX)) return;
     setSaveState("dirty");
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => save(activePath, next), 600);
-  }, [activePath, activeSharedDoc, save]);
+  }, [activePath, save]);
 
   const assocFilteredDocs = useMemo(() => {
     if (!index || !addAssocCtx) return [];
@@ -833,26 +889,6 @@ export function App({ namespace }: { namespace: string }) {
             onSelect={selectDoc}
             onToggle={toggleCollapsed}
           />
-          {sharedDocs.length > 0 && (
-            <div className="shared-section">
-              <p className="shared-section-title">Shared with me</p>
-              {sharedDocs.map((s) => {
-                const key = sharedActiveKey(s);
-                return (
-                  <div
-                    key={s.shareId}
-                    className="shared-doc-item"
-                    data-active={activePath === key}
-                    onClick={() => selectDoc(key)}
-                    role="button"
-                  >
-                    <span className="shared-doc-title">{s.title}</span>
-                    <span className="shared-doc-owner">from {s.ownerEmail ?? s.ownerId.slice(0, 12)}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
           <div className="sidebar-footer">
             <button
               className="sidebar-footer-btn"
@@ -929,37 +965,45 @@ export function App({ namespace }: { namespace: string }) {
               >
                 {graphCollapsed ? "▼ Show graph" : "▲ Hide graph"}
               </button>
-              {activeDoc ? (
-                <>
-                  {activeSharedDoc && (
-                    <div className="shared-banner">
-                      <span>📎</span>
-                      <span>
-                        Shared by <strong>{activeSharedDoc.ownerEmail ?? activeSharedDoc.ownerId.slice(0, 12)}</strong> — read-only
-                      </span>
-                    </div>
-                  )}
-                  <div className="toolbar">
-                    <button onClick={() => setDocMode("rendered")} data-active={docMode === "rendered"}>Rendered</button>
-                    {!activeSharedDoc && (
-                      <button onClick={() => setDocMode("raw")} data-active={docMode === "raw"}>Raw</button>
+              {activeDoc ? (() => {
+                const isSharedView = activePath?.startsWith(SHARED_PREFIX) ?? false;
+                const isSharedDoc = !!activeSharedDoc;
+                const isSharedRoot = activePath === SHARED_ROOT_PATH;
+                const displayPath = isSharedDoc
+                  ? `${activeSharedDoc.ownerEmail ?? activeSharedDoc.ownerId.slice(0, 12)} / ${activeSharedDoc.path}`
+                  : isSharedRoot ? "VAULT / SHARED" : activeDoc.path;
+                return (
+                  <>
+                    {isSharedDoc && (
+                      <div className="shared-banner">
+                        <span>📎</span>
+                        <span>
+                          Shared by <strong>{activeSharedDoc.ownerEmail ?? activeSharedDoc.ownerId.slice(0, 12)}</strong> — read-only
+                        </span>
+                      </div>
                     )}
-                    <span className="doc-path">{activeDoc.path}</span>
-                    <span className="spacer" />
-                    {!activeSharedDoc && <span className="save-state">{labelFor(saveState)}</span>}
-                  </div>
-                  <div className="editor-host">
-                    <DocEditor
-                      path={activeSharedDoc ? `${activeSharedDoc.ownerId}:${activeDoc.path}` : activeDoc.path}
-                      initialContent={activeDoc.content}
-                      mode={activeSharedDoc ? "rendered" : docMode}
-                      onChange={handleEdit}
-                      onWikiLinkClick={handleWikiLinkClick}
-                      readOnly={!!activeSharedDoc}
-                    />
-                  </div>
-                </>
-              ) : (
+                    <div className="toolbar">
+                      <button onClick={() => setDocMode("rendered")} data-active={docMode === "rendered"}>Rendered</button>
+                      {!isSharedView && (
+                        <button onClick={() => setDocMode("raw")} data-active={docMode === "raw"}>Raw</button>
+                      )}
+                      <span className="doc-path">{displayPath}</span>
+                      <span className="spacer" />
+                      {!isSharedView && <span className="save-state">{labelFor(saveState)}</span>}
+                    </div>
+                    <div className="editor-host">
+                      <DocEditor
+                        path={isSharedDoc ? `${activeSharedDoc.ownerId}:${activeDoc.path}` : activeDoc.path}
+                        initialContent={activeDoc.content}
+                        mode={isSharedView ? "rendered" : docMode}
+                        onChange={handleEdit}
+                        onWikiLinkClick={handleWikiLinkClick}
+                        readOnly={isSharedView}
+                      />
+                    </div>
+                  </>
+                );
+              })() : (
                 <div className="empty">
                   <p>Select a doc from the sidebar or graph to view it here.</p>
                 </div>

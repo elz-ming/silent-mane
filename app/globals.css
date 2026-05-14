@@ -985,38 +985,6 @@ body[data-resizing-split="true"] {
 }
 .btn-share:hover { background: var(--accent); color: #fff; }
 
-/* ── Shared-with-me sidebar section ──────────────────────── */
-.shared-section {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border-subtle);
-}
-.shared-section-title {
-  margin: 0 0 8px;
-  padding: 0 14px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.shared-doc-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 14px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--fg);
-  border-left: 2px solid transparent;
-}
-.shared-doc-item:hover { background: var(--bg); }
-.shared-doc-item[data-active="true"] {
-  background: var(--bg);
-  border-left-color: var(--accent);
-}
-.shared-doc-title { font-weight: 500; }
-.shared-doc-owner { font-size: 11px; color: var(--muted); }
 
 /* ── Sync (content topbar) ──────────────────────────────── */
 .content-topbar {

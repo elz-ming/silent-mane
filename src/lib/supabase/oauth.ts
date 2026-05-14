@@ -50,7 +50,7 @@ async function claimPendingInvitations(clerkId: string, email: string): Promise<
   const admin = adminClient();
   const { data: invites } = await admin
     .from("share_invitations")
-    .select("id, inviter_id, path_prefix, permission")
+    .select("id, inviter_id, path_prefix, permission, share_root")
     .eq("status", "pending")
     .ilike("invitee_email", email);
   if (!invites || invites.length === 0) return;
@@ -60,6 +60,7 @@ async function claimPendingInvitations(clerkId: string, email: string): Promise<
     grantee_id: clerkId,
     path_prefix: inv.path_prefix,
     permission: inv.permission,
+    share_root: inv.share_root,
   }));
   await admin.from("doc_shares").upsert(rows, {
     onConflict: "owner_id,path_prefix,grantee_id",

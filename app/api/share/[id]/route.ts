@@ -5,8 +5,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
- * Revoke a share or pending invitation. `kind` query param disambiguates
- * between the two tables since their UUIDs live in separate spaces.
+ * Revoke a share or pending invitation. If the row has a share_root the
+ * whole cascade group (every row with the same owner/grantee/share_root)
+ * is removed atomically — so revoking once unshares the entire subtree.
+ * `kind` query param disambiguates between the two tables.
  */
 export async function DELETE(
   request: Request,
@@ -20,18 +22,42 @@ export async function DELETE(
 
   const admin = adminClient();
   if (kind === "invitation") {
-    const { error } = await admin
+    const { data: row } = await admin
+      .from("share_invitations")
+      .select("invitee_email, share_root")
+      .eq("id", id)
+      .eq("inviter_id", userId)
+      .maybeSingle();
+    if (!row) return Response.json({ ok: true });
+
+    let query = admin
       .from("share_invitations")
       .update({ status: "revoked" })
-      .eq("id", id)
-      .eq("inviter_id", userId);
+      .eq("inviter_id", userId)
+      .ilike("invitee_email", row.invitee_email);
+    if (row.share_root) query = query.eq("share_root", row.share_root);
+    else query = query.eq("id", id);
+
+    const { error } = await query;
     if (error) return Response.json({ error: error.message }, { status: 500 });
   } else {
-    const { error } = await admin
+    const { data: row } = await admin
+      .from("doc_shares")
+      .select("grantee_id, share_root")
+      .eq("id", id)
+      .eq("owner_id", userId)
+      .maybeSingle();
+    if (!row) return Response.json({ ok: true });
+
+    let query = admin
       .from("doc_shares")
       .delete()
-      .eq("id", id)
-      .eq("owner_id", userId);
+      .eq("owner_id", userId)
+      .eq("grantee_id", row.grantee_id);
+    if (row.share_root) query = query.eq("share_root", row.share_root);
+    else query = query.eq("id", id);
+
+    const { error } = await query;
     if (error) return Response.json({ error: error.message }, { status: 500 });
   }
   return Response.json({ ok: true });

@@ -8,6 +8,8 @@ interface ShareRow {
   email: string | null;
   permission: "read" | "write";
   created_at: string;
+  share_root: string;
+  doc_count: number;
 }
 
 interface InvitationRow {
@@ -17,6 +19,8 @@ interface InvitationRow {
   permission: "read" | "write";
   token: string;
   created_at: string;
+  share_root: string;
+  doc_count: number;
 }
 
 type Recipient = ShareRow | InvitationRow;
@@ -249,6 +253,7 @@ export function ShareModal({ path, title, onClose }: Props) {
                   <span className="share-list-meta">
                     {r.kind === "invitation" ? "pending invitation" : "active"}
                     {" · "}{r.permission}
+                    {r.doc_count > 1 && ` · ${r.doc_count} docs`}
                   </span>
                 </div>
                 <button
