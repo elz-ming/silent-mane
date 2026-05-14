@@ -1059,14 +1059,17 @@ body {
     flex-direction: column;
     overflow: visible;
   }
-  .graph-pane,
-  .doc-pane {
+  .graph-pane {
     flex: 0 0 auto;
-    height: 60svh;
-    min-height: 60svh;
+    height: 35svh;
+    min-height: 35svh;
     overflow: visible;
   }
   .doc-pane {
+    flex: 0 0 auto;
+    height: 75svh;
+    min-height: 75svh;
+    overflow: visible;
     border-left: none;
     border-top: 1px solid var(--border);
   }
@@ -1077,7 +1080,7 @@ body {
     padding: 8px 12px;
     -webkit-overflow-scrolling: touch;
   }
-  .graph-stage { min-height: 60svh; }
+  .graph-stage { min-height: 35svh; }
 
   .modal { padding: 20px; }
 }
