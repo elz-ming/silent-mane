@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { loadVaultIndex } from "./vault";
+import { extractPreamble } from "./patch_preamble";
 import type { ToolContext } from "./types";
 
 function json(value: unknown) {
@@ -47,5 +48,13 @@ export async function getDoc(ctx: ToolContext, args: Record<string, unknown>): P
     heading: s.heading,
     content_hash: hashBody(extractBody(doc.content, s)),
   }));
-  return json({ path: doc.path, title: doc.title, summary: doc.summary, content: doc.content, sections });
+  const preamble = extractPreamble(doc.content);
+  return json({
+    path: doc.path,
+    title: doc.title,
+    summary: doc.summary,
+    content: doc.content,
+    preamble: preamble ?? undefined,
+    sections,
+  });
 }
