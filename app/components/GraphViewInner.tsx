@@ -422,6 +422,9 @@ export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddA
       elements: [],
       maxZoom: 4,
       minZoom: 0.15,
+      // Disable Cytoscape's built-in wheel-zoom so our wheel listener (below)
+      // can split trackpad scrolls (pan) from pinches (zoom) by ctrlKey.
+      userZoomingEnabled: false,
       wheelSensitivity: 0.2,
       style: [
         // --- Nodes: fill + border by category, size by depth (kind) ---
@@ -542,7 +545,35 @@ export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddA
 
     cyRef.current = cy;
     setZoomPct(100);
+
+    // Trackpad-friendly wheel handling. Mac trackpads emit `wheel` events
+    // with `ctrlKey: true` during pinch gestures (browser convention,
+    // same signal Maps libs use). So:
+    //   - wheel + ctrlKey  → pinch zoom, anchored to the cursor
+    //   - wheel no ctrlKey → two-finger scroll, pan by the delta
+    // Click-drag panning is unchanged (Cytoscape's built-in stays on).
+    // For users on a scroll-wheel mouse, hold ⌃ to zoom — same convention.
+    const container = ref.current;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey) {
+        const factor = Math.exp(-e.deltaY * 0.01);
+        const next = Math.min(cy.maxZoom(), Math.max(cy.minZoom(), cy.zoom() * factor));
+        const rect = container.getBoundingClientRect();
+        cy.zoom({
+          level: next,
+          renderedPosition: { x: e.clientX - rect.left, y: e.clientY - rect.top },
+        });
+        setZoomPct(Math.round(cy.zoom() * 100));
+      } else {
+        const pan = cy.pan();
+        cy.pan({ x: pan.x - e.deltaX, y: pan.y - e.deltaY });
+      }
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+
     return () => {
+      container.removeEventListener("wheel", onWheel);
       cy.destroy();
       cyRef.current = null;
     };
