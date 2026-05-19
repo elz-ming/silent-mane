@@ -445,6 +445,24 @@ function placeLayout(
   return { nodes: [...placed.values()], edges, totalRotatable, pageSize };
 }
 
+// How far beyond a node's target position to start/exit. Picked to feel
+// like a clean slide without the node entering off-screen on a typical
+// stage size — combined with the layer-1 ring radius (240) it produces
+// ~⅓ ring-radius of slide motion, which reads as "from outside" without
+// covering excessive distance during the 500ms animation.
+const OUTSIDE_OFFSET = 80;
+
+function outsidePositionFrom(pos: { x: number; y: number }): { x: number; y: number } {
+  // Slide further out along the same radial direction from origin. Nodes at
+  // or near the origin (focal) get no offset — there's no direction to
+  // travel along, and the focal itself is the destination anyway.
+  const len = Math.hypot(pos.x, pos.y);
+  if (len < 1) return pos;
+  const ux = pos.x / len;
+  const uy = pos.y / len;
+  return { x: pos.x + ux * OUTSIDE_OFFSET, y: pos.y + uy * OUTSIDE_OFFSET };
+}
+
 function syncGraph(
   cy: cytoscape.Core,
   layout: { nodes: PlacedNode[]; edges: PlacedEdge[] }
@@ -456,12 +474,17 @@ function syncGraph(
   // built from a "focal" placeholder collided across focus changes.
   cy.edges().remove();
 
-  // Fade out + remove vanishing nodes
+  // Vanishing nodes slide outward (continuing past their last slot's
+  // radial direction) while fading, instead of crossfading in place.
+  // That's what produces the "PEOPLE goes up and away" feel during a
+  // sibling-rotation transition.
   cy.nodes().forEach((n) => {
     if (!desiredNodeIds.has(n.id())) {
+      const currentPos = n.position();
+      const exitPos = outsidePositionFrom(currentPos);
       n.animate(
-        { style: { opacity: 0 } },
-        { duration: ANIM_MS / 2, complete: () => n.remove() }
+        { position: exitPos, style: { opacity: 0 } },
+        { duration: ANIM_MS, easing: "ease-in", complete: () => n.remove() }
       );
     }
   });
@@ -470,9 +493,10 @@ function syncGraph(
   for (const nd of layout.nodes) {
     let node = cy.getElementById(nd.id);
     if (node.empty()) {
-      // place the new node at the focal position so it appears to "fly out"
-      const focal = layout.nodes.find((x) => x.kind === "focal");
-      const startPos = focal ? focal.position : nd.position;
+      // New nodes enter from beyond their target slot, sliding inward to
+      // their target position. For the focal itself (position (0,0)),
+      // outsidePositionFrom is a no-op so it still fades in centered.
+      const startPos = outsidePositionFrom(nd.position);
       node = cy.add({
         group: "nodes",
         data: { id: nd.id, label: nd.label, kind: nd.kind, category: nd.category },
