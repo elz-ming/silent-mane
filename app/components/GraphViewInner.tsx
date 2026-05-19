@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import cytoscape from "cytoscape";
-import type { DocIndex, Edge } from "@/src/core/indexer";
+import type { DocIndex, DocNode, Edge } from "@/src/core/indexer";
 
 export interface Props {
   index: DocIndex;
@@ -12,6 +12,11 @@ export interface Props {
   onDeleteNode?: (focalPath: string, focalTitle: string) => void;
   onShareNode?: (focalPath: string, focalTitle: string) => void;
   onRenameNode?: (focalPath: string, focalTitle: string) => void;
+  // Prev/next sibling for the active doc — computed in App so the doc-pane
+  // toolbar and the graph-pane controls stay in lockstep. When the user
+  // taps a graph node, App's activePath updates and this memo recomputes.
+  prevSibling?: DocNode | null;
+  nextSibling?: DocNode | null;
 }
 
 const PAGE_SIZE = 8;
@@ -374,7 +379,7 @@ function syncGraph(
   }
 }
 
-export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddAssociation, onDeleteNode, onShareNode, onRenameNode }: Props) {
+export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddAssociation, onDeleteNode, onShareNode, onRenameNode, prevSibling, nextSibling }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   const focalIdRef = useRef<string | null>(null);
@@ -663,7 +668,6 @@ export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddA
   return (
     <div className="graph-wrap">
       <div className="graph-bar">
-        <span className="graph-focal">Focus: <strong>{focalDoc.title}</strong></span>
         {onAddChild && (
           <button className="btn-action" onClick={() => onAddChild(focalId!, focalDoc.title)}>+ Child</button>
         )}
@@ -710,50 +714,73 @@ export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddA
       </div>
       <div className="graph-stage">
         <div ref={ref} className="graph" />
-        {lineage.length > 1 && (
-          <nav className="graph-breadcrumb" aria-label="Lineage">
-            {lineage.map((crumb, i) => {
-              const isFocal = i === lineage.length - 1;
-              return (
-                <span key={crumb.path} className="graph-breadcrumb-cell">
-                  {i > 0 && <span className="graph-breadcrumb-sep" aria-hidden="true">›</span>}
-                  <button
-                    className="graph-breadcrumb-crumb"
-                    data-focal={isFocal}
-                    onClick={() => !isFocal && onSelect(crumb.path)}
-                    title={crumb.title}
-                    type="button"
-                    disabled={isFocal}
-                  >
-                    {crumb.title}
-                  </button>
-                </span>
-              );
-            })}
-          </nav>
-        )}
-        <div className="graph-pager">
-          <button
-            className="graph-pager-btn"
-            onClick={() => setPage((p) => (p - 1 + totalPages) % totalPages)}
-            disabled={totalPages <= 1}
-            aria-label="Previous page"
-            title="Previous page"
-            type="button"
-          >‹</button>
-          <span className="graph-pager-text">
-            {totalLayer1 === 0
-              ? "No connections"
-              : `${pageStart + 1}–${Math.min(pageStart + PAGE_SIZE, totalLayer1)} of ${totalLayer1}`}
-          </span>
-          <button
-            className="graph-pager-btn"
-            onClick={() => setPage((p) => (p + 1) % totalPages)}
-            disabled={totalPages <= 1}
-            aria-label="Next page"
-            title="Next page"
-            type="button"
-          >›</button>
+        <div className="graph-controls">
+          <div className="graph-controls-focal">
+            Focus: <strong>{focalDoc.title}</strong>
+          </div>
+          <div className="graph-controls-row">
+            <button
+              className="graph-controls-btn"
+              onClick={() => prevSibling && onSelect(prevSibling.path)}
+              disabled={!prevSibling}
+              title={prevSibling ? `← ${prevSibling.title}  [` : "No previous sibling  ["}
+              type="button"
+            >← Prev Node</button>
+            <button
+              className="graph-controls-btn"
+              onClick={() => nextSibling && onSelect(nextSibling.path)}
+              disabled={!nextSibling}
+              title={nextSibling ? `${nextSibling.title} →  ]` : "No next sibling  ]"}
+              type="button"
+            >Next Node →</button>
+          </div>
+          <div className="graph-controls-row">
+            <button
+              className="graph-controls-btn"
+              onClick={() => setPage((p) => (p - 1 + totalPages) % totalPages)}
+              disabled={totalPages <= 1}
+              aria-label="Previous page"
+              title="Previous page"
+              type="button"
+            >‹ Prev Page</button>
+            <span className="graph-controls-page">
+              {totalLayer1 === 0
+                ? "No connections"
+                : totalPages === 1
+                ? `${totalLayer1} connection${totalLayer1 === 1 ? "" : "s"}`
+                : `Page ${page + 1} / ${totalPages}`}
+            </span>
+            <button
+              className="graph-controls-btn"
+              onClick={() => setPage((p) => (p + 1) % totalPages)}
+              disabled={totalPages <= 1}
+              aria-label="Next page"
+              title="Next page"
+              type="button"
+            >Next Page ›</button>
+          </div>
+          {lineage.length > 1 && (
+            <nav className="graph-controls-breadcrumb" aria-label="Lineage">
+              {lineage.map((crumb, i) => {
+                const isFocal = i === lineage.length - 1;
+                return (
+                  <span key={crumb.path} className="graph-breadcrumb-cell">
+                    {i > 0 && <span className="graph-breadcrumb-sep" aria-hidden="true">›</span>}
+                    <button
+                      className="graph-breadcrumb-crumb"
+                      data-focal={isFocal}
+                      onClick={() => !isFocal && onSelect(crumb.path)}
+                      title={crumb.title}
+                      type="button"
+                      disabled={isFocal}
+                    >
+                      {crumb.title}
+                    </button>
+                  </span>
+                );
+              })}
+            </nav>
+          )}
         </div>
         <div className="zoom-control" onMouseLeave={() => setZoomMenuOpen(false)}>
           <button

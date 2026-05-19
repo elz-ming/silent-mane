@@ -1117,6 +1117,8 @@ export function App({ namespace }: { namespace: string }) {
                   onDeleteNode={isOwnNamespace ? openDeleteNode : undefined}
                   onShareNode={isOwnNamespace ? openShareNode : undefined}
                   onRenameNode={isOwnNamespace ? openRenameNode : undefined}
+                  prevSibling={prevSibling}
+                  nextSibling={nextSibling}
                 />
               )}
             </div>

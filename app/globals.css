@@ -630,8 +630,6 @@ body[data-resizing-split="true"] {
 }
 .graph-bar button:hover:not(:disabled) { background: var(--bg); }
 .graph-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
-.graph-bar .graph-focal { color: var(--muted); white-space: nowrap; }
-.graph-bar .graph-focal strong { color: var(--fg); margin-left: 4px; }
 .graph-bar .graph-page { color: var(--muted); white-space: nowrap; }
 
 /* Accent-tinted action buttons in graph bar */
@@ -681,37 +679,39 @@ body[data-resizing-split="true"] {
   container-name: graphstage;
 }
 
-/* When the stage gets too narrow for the three bottom overlays to sit
-   side-by-side without overlapping, stack them in a single column anchored
-   to the bottom-left: zoom (top), pager (middle), breadcrumb (bottom). */
-@container graphstage (max-width: 700px) {
-  .graph-breadcrumb {
-    max-width: calc(100% - 32px);
-  }
-  .graph-pager {
-    bottom: 60px;
-    left: 16px;
-    transform: none;
-  }
-  .zoom-control {
-    bottom: 104px;
-    left: 16px;
-    right: auto;
-  }
-}
 .graph {
   position: absolute;
   inset: 0;
 }
 .graph-empty { padding: 32px; color: var(--muted); }
 
-/* Pager floats over the graph at bottom-center — below the focal area
-   so it visually trails the 6-o'clock layer-1 node when one exists. */
-.graph-pager {
+/* Bottom-left stacked control surface — focal label, sibling nav, page nav,
+   lineage breadcrumb. Zoom stays at bottom-right. The stack is anchored at
+   bottom-left and grows upward as rows are added. */
+.graph-controls {
   position: absolute;
   bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 10;
+  max-width: calc(100% - 32px);
+}
+.graph-controls-focal {
+  padding: 4px 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.graph-controls-focal strong { color: var(--fg); margin-left: 4px; }
+.graph-controls-row {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -721,38 +721,30 @@ body[data-resizing-split="true"] {
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
   font-size: 12px;
-  z-index: 10;
 }
-.graph-pager-text {
+.graph-controls-btn {
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  padding: 2px 8px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+.graph-controls-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
+.graph-controls-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.graph-controls-page {
   color: var(--muted);
   padding: 0 6px;
   white-space: nowrap;
   min-width: 78px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
-.graph-pager-btn {
-  border: none;
-  background: transparent;
-  color: var(--fg);
-  width: 22px;
-  height: 22px;
-  font-size: 16px;
-  line-height: 1;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.graph-pager-btn:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
-.graph-pager-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-
-/* Lineage breadcrumb — root → … → focal, in the bottom-left corner of
-   the stage. Clicking any non-focal crumb re-centers the graph there. */
-.graph-breadcrumb {
-  position: absolute;
-  bottom: 16px;
-  left: 16px;
+.graph-controls-breadcrumb {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
@@ -762,8 +754,6 @@ body[data-resizing-split="true"] {
   border-radius: var(--radius);
   box-shadow: var(--shadow-md);
   font-size: 11px;
-  z-index: 10;
-  max-width: calc(50% - 100px);
   overflow: hidden;
 }
 .graph-breadcrumb-cell { display: inline-flex; align-items: center; }
