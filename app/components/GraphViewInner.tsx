@@ -20,18 +20,18 @@ export interface Props {
 }
 
 // 8 angular slots around the focal at 45° each, starting at 12 o'clock.
-// Slot 0 (12) is reserved for the parent when one exists. Slots 1 (~1:30)
-// and 7 (~10:30) hold the next and previous siblings — clustered close to
-// the parent at the top of the ring so the trio reads as "lineage + nav"
-// rather than "lineage + scattered neighbors". The fixed positions are
-// what makes prev/next-sibling navigation feel like a rotation: when you
-// click Next, the slot-1 node becomes the focal and the old focal lands
-// at slot 7 (which is the new focal's prev sibling slot), so cytoscape's
-// tween between layouts visually arcs the ring across the top.
+// Slot 0 (12) is reserved for the parent when one exists; the other 7
+// slots hold focal's children/associates. Siblings are NOT in this ring —
+// they're satellites of the parent, positioned at "10 o'clock" / "2 o'clock"
+// off the parent itself. That keeps focal's ring fully available for real
+// neighbors, and the lineage trio (prev sibling, parent, next sibling)
+// reads as a cluster at the top of the view.
 const SLOT_COUNT = 8;
 const PARENT_SLOT = 0;
-const NEXT_SIBLING_SLOT = 1;
-const PREV_SIBLING_SLOT = 7;
+// Sibling satellites: distance from parent's center, and angular offset
+// from "straight up" (parent's 12 o'clock). 60° = 2 / 10 o'clock positions.
+const SIBLING_PARENT_OFFSET = 130;
+const SIBLING_ANGLE_FROM_PARENT = Math.PI / 3; // 60°
 const LAYER2_PER_LAYER1 = 2;
 const RADIUS_LAYER1 = 240;
 const RADIUS_LAYER2 = 400;
@@ -232,14 +232,13 @@ function placeLayout(
   const prevSiblingId =
     prevPath && index.docs.some((d) => d.path === prevPath) ? prevPath : null;
 
-  // Reserved slots collapse the available pool for rotatable neighbors.
-  const reservedSlots = new Set<number>();
-  if (parent) reservedSlots.add(PARENT_SLOT);
-  if (nextSiblingId) reservedSlots.add(NEXT_SIBLING_SLOT);
-  if (prevSiblingId) reservedSlots.add(PREV_SIBLING_SLOT);
+  // Only the parent slot (12 o'clock) is reserved in the focal's ring.
+  // Siblings live outside the ring as satellites of the parent, so they
+  // don't compete for slot space with focal's actual children/associates.
   const availableSlots: number[] = [];
   for (let i = 0; i < SLOT_COUNT; i++) {
-    if (!reservedSlots.has(i)) availableSlots.push(i);
+    if (parent && i === PARENT_SLOT) continue;
+    availableSlots.push(i);
   }
 
   const pageSize = Math.max(1, availableSlots.length);
@@ -282,32 +281,44 @@ function placeLayout(
     layer1Real.push(parent);
   }
 
-  // Place next sibling at slot 2 (3 o'clock) — no direct edge from focal,
-  // because the relationship is focal↔parent↔sibling. Rendered as a
-  // floating layer-1 node so it can rotate into focus on click.
-  if (nextSiblingId) {
-    const angle = angleForSlot(NEXT_SIBLING_SLOT);
-    layer1AnglesById.set(nextSiblingId, angle);
-    placed.set(nextSiblingId, {
-      id: nextSiblingId,
-      label: shortLabel(nextSiblingId),
-      kind: "sibling",
-      category: categoryFor(nextSiblingId),
-      position: { x: Math.cos(angle) * RADIUS_LAYER1, y: Math.sin(angle) * RADIUS_LAYER1 },
-    });
-  }
-
-  // Place prev sibling at slot 7 (~10:30)
-  if (prevSiblingId) {
-    const angle = angleForSlot(PREV_SIBLING_SLOT);
-    layer1AnglesById.set(prevSiblingId, angle);
-    placed.set(prevSiblingId, {
-      id: prevSiblingId,
-      label: shortLabel(prevSiblingId),
-      kind: "sibling",
-      category: categoryFor(prevSiblingId),
-      position: { x: Math.cos(angle) * RADIUS_LAYER1, y: Math.sin(angle) * RADIUS_LAYER1 },
-    });
+  // Place prev/next siblings as satellites of the parent — at parent's
+  // ~10 o'clock and ~2 o'clock. Skipped when there's no parent (root focal
+  // has no siblings by definition). Position is parent_center + offset_vec.
+  if (parent) {
+    const parentPos = {
+      x: Math.cos(angleForSlot(PARENT_SLOT)) * RADIUS_LAYER1,
+      y: Math.sin(angleForSlot(PARENT_SLOT)) * RADIUS_LAYER1,
+    };
+    if (nextSiblingId) {
+      // 2 o'clock from parent = rotate "up" (0, -1) clockwise by +60°
+      const dx = Math.sin(SIBLING_ANGLE_FROM_PARENT);
+      const dy = -Math.cos(SIBLING_ANGLE_FROM_PARENT);
+      placed.set(nextSiblingId, {
+        id: nextSiblingId,
+        label: shortLabel(nextSiblingId),
+        kind: "sibling",
+        category: categoryFor(nextSiblingId),
+        position: {
+          x: parentPos.x + dx * SIBLING_PARENT_OFFSET,
+          y: parentPos.y + dy * SIBLING_PARENT_OFFSET,
+        },
+      });
+    }
+    if (prevSiblingId) {
+      // 10 o'clock from parent = rotate "up" (0, -1) counter-clockwise by 60°
+      const dx = -Math.sin(SIBLING_ANGLE_FROM_PARENT);
+      const dy = -Math.cos(SIBLING_ANGLE_FROM_PARENT);
+      placed.set(prevSiblingId, {
+        id: prevSiblingId,
+        label: shortLabel(prevSiblingId),
+        kind: "sibling",
+        category: categoryFor(prevSiblingId),
+        position: {
+          x: parentPos.x + dx * SIBLING_PARENT_OFFSET,
+          y: parentPos.y + dy * SIBLING_PARENT_OFFSET,
+        },
+      });
+    }
   }
 
   // Place rotatable neighbors in the remaining slots, in their sorted order
