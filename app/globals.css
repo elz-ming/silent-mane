@@ -1073,6 +1073,40 @@ body[data-resizing-split="true"] {
 /* ── Share modal ─────────────────────────────────────────── */
 .share-modal { max-width: 520px; }
 
+/* ── Download format pills ────────────────────────────────── */
+.download-format {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+.download-format-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-right: 4px;
+}
+.download-format-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--fg);
+  user-select: none;
+}
+.download-format-pill input { accent-color: var(--accent); }
+.download-format-pill.is-active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 /* ── Share-to-public toggle block ─────────────────────────── */
 .share-public {
   margin: 4px 0 14px;

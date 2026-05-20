@@ -11,6 +11,8 @@ interface Props {
   onClose: () => void;
 }
 
+type Format = "pdf" | "md";
+
 function sanitizeSegment(name: string): string {
   const cleaned = name
     .replace(/[\\/:*?"<>|]/g, "_")
@@ -28,12 +30,6 @@ function zipFilename(title: string, path: string): string {
   return `${sanitizeSegment(last.replace(/\.md$/i, ""))}.zip`;
 }
 
-/**
- * Build a rename map from each doc's filename slug (the ASCII path segment
- * used in Supabase Storage) to its H1 title. Local filesystems accept
- * unicode, so once the bytes are inside a zip we can swap the slug back
- * to the human-friendly title.
- */
 function buildSlugToTitle(index: DocIndex): Map<string, string> {
   const m = new Map<string, string>();
   for (const d of index.docs) {
@@ -44,17 +40,43 @@ function buildSlugToTitle(index: DocIndex): Map<string, string> {
 }
 
 /**
- * Rewrite an in-vault path to use H1 titles for every segment. Directory
- * segments resolve via the slug→title map; leaf filenames use the focal
- * doc's title. `usedByDir` tracks claimed filenames per output directory
- * so colliding siblings get `-2`, `-3` suffixes.
+ * Longest common directory prefix across all selected paths. Used to
+ * re-root the zip at the focal's branch instead of the vault root, so a
+ * download of `events/.../GBI/.../DAY1-CN/YOUJI-CAIFU-ZHANSHU.md` plus
+ * its siblings doesn't bury everything under six empty parent dirs.
+ */
+function commonDirPrefix(paths: string[]): string {
+  if (paths.length === 0) return "";
+  if (paths.length === 1) {
+    const idx = paths[0].lastIndexOf("/");
+    return idx >= 0 ? paths[0].slice(0, idx + 1) : "";
+  }
+  const first = paths[0].split("/");
+  let common = first.length - 1; // drop filename
+  for (let i = 1; i < paths.length; i++) {
+    const other = paths[i].split("/");
+    const max = Math.min(common, other.length - 1);
+    let k = 0;
+    while (k < max && first[k] === other[k]) k++;
+    common = k;
+  }
+  if (common === 0) return "";
+  return first.slice(0, common).join("/") + "/";
+}
+
+/**
+ * Rewrite a vault-relative path to use H1 titles for every segment.
+ * Directory segments resolve via the slug→title map; leaf filenames use
+ * the focal doc's title. `usedByDir` tracks claimed filenames per
+ * output directory so colliding siblings get `-2`, `-3` suffixes.
  */
 function rewriteZipPath(
-  vaultPath: string,
+  relPath: string,
+  ext: string,
   slugToTitle: Map<string, string>,
   usedByDir: Map<string, Set<string>>
 ): string {
-  const parts = vaultPath.split("/");
+  const parts = relPath.split("/");
   const file = parts.pop() ?? "";
   const fileBase = file.replace(/\.md$/i, "");
 
@@ -76,16 +98,46 @@ function rewriteZipPath(
   used.add(candidate.toLowerCase());
   usedByDir.set(dirKey, used);
 
-  return [...renamedDirs, `${candidate}.md`].join("/");
+  return [...renamedDirs, `${candidate}${ext}`].join("/");
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+// PDF rendering happens against this hidden container — we reuse one
+// element across docs so the browser doesn't reflow 30 separate trees.
+// CSS lives inline so the layout doesn't depend on globals.css being
+// loaded (and matches what the user sees in the rendered preview).
+function createPdfStage(): HTMLDivElement {
+  const div = document.createElement("div");
+  div.style.cssText = [
+    "position:fixed",
+    "left:-10000px",
+    "top:0",
+    "width:794px", // ~A4 at 96dpi
+    "padding:24px",
+    "background:#ffffff",
+    "color:#1f2937",
+    'font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif',
+    "font-size:14px",
+    "line-height:1.6",
+  ].join(";");
+  document.body.appendChild(div);
+  return div;
 }
 
 export function DownloadModal({ path, title, index, onClose }: Props) {
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set([path]));
+  const [format, setFormat] = useState<Format>("pdf");
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const seededForPathRef = useRef<string | null>(null);
 
-  // Seed picker with focal + all descendants (mirrors ShareModal).
   useEffect(() => {
     if (!index || seededForPathRef.current === path) return;
     seededForPathRef.current = path;
@@ -117,27 +169,73 @@ export function DownloadModal({ path, title, index, onClose }: Props) {
     return m;
   }, [index]);
 
+  const titleByPath = useMemo(() => {
+    const m = new Map<string, string>();
+    if (!index) return m;
+    for (const d of index.docs) m.set(d.path, d.title);
+    return m;
+  }, [index]);
+
   const onDownload = async () => {
     if (!index || selectedPaths.size === 0) return;
     setBusy(true);
     setError(null);
+    setProgress({ done: 0, total: selectedPaths.size });
     try {
       const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
       const slugToTitle = buildSlugToTitle(index);
       const usedByDir = new Map<string, Set<string>>();
-      // Sort so shallower paths claim their filenames before deeper ones,
-      // keeping collision suffixes deterministic.
       const sorted = [...selectedPaths].sort();
-      let added = 0;
-      for (const p of sorted) {
-        const content = contentByPath.get(p);
-        if (typeof content !== "string") continue;
-        const zipPath = rewriteZipPath(p, slugToTitle, usedByDir);
-        zip.file(zipPath, content);
-        added++;
+      const prefix = commonDirPrefix(sorted);
+
+      if (format === "md") {
+        let added = 0;
+        for (const p of sorted) {
+          const content = contentByPath.get(p);
+          if (typeof content !== "string") continue;
+          const rel = p.startsWith(prefix) ? p.slice(prefix.length) : p;
+          const zipPath = rewriteZipPath(rel, ".md", slugToTitle, usedByDir);
+          zip.file(zipPath, content);
+          added++;
+          setProgress({ done: added, total: sorted.length });
+        }
+        if (added === 0) throw new Error("No content available to download.");
+      } else {
+        const { marked } = await import("marked");
+        const html2pdf = (await import("html2pdf.js")).default;
+        const stage = createPdfStage();
+        try {
+          let added = 0;
+          for (const p of sorted) {
+            const content = contentByPath.get(p);
+            if (typeof content !== "string") continue;
+            const docTitle = titleByPath.get(p) ?? p;
+            const bodyHtml = await marked.parse(content, { async: true });
+            stage.innerHTML = `<h1 style="margin-top:0">${escapeHtml(docTitle)}</h1>${bodyHtml}`;
+            const worker = html2pdf()
+              .set({
+                margin: [12, 14, 14, 14],
+                image: { type: "jpeg", quality: 0.95 },
+                html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
+                jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+                pagebreak: { mode: ["css", "legacy"] },
+              })
+              .from(stage);
+            const pdfOut = await worker.outputPdf("blob");
+            const pdfBlob = pdfOut instanceof Blob ? pdfOut : new Blob([pdfOut]);
+            const rel = p.startsWith(prefix) ? p.slice(prefix.length) : p;
+            const zipPath = rewriteZipPath(rel, ".pdf", slugToTitle, usedByDir);
+            zip.file(zipPath, pdfBlob);
+            added++;
+            setProgress({ done: added, total: sorted.length });
+          }
+          if (added === 0) throw new Error("No content available to download.");
+        } finally {
+          stage.remove();
+        }
       }
-      if (added === 0) throw new Error("No content available to download.");
+
       const blob = await zip.generateAsync({ type: "blob", compression: "DEFLATE" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -152,8 +250,15 @@ export function DownloadModal({ path, title, index, onClose }: Props) {
       setError(e instanceof Error ? e.message : "Failed to build zip.");
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   };
+
+  const buttonLabel = busy
+    ? progress
+      ? `Building ${progress.done}/${progress.total}…`
+      : "Zipping…"
+    : `Download ${selectedPaths.size} doc${selectedPaths.size === 1 ? "" : "s"}`;
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -164,6 +269,32 @@ export function DownloadModal({ path, title, index, onClose }: Props) {
             <p className="modal-subtitle">{title}</p>
           </div>
           <button className="modal-close" onClick={onClose} aria-label="Close" type="button">×</button>
+        </div>
+
+        <div className="download-format">
+          <span className="download-format-label">Format</span>
+          <label className={`download-format-pill ${format === "pdf" ? "is-active" : ""}`}>
+            <input
+              type="radio"
+              name="download-format"
+              value="pdf"
+              checked={format === "pdf"}
+              onChange={() => setFormat("pdf")}
+              disabled={busy}
+            />
+            PDF
+          </label>
+          <label className={`download-format-pill ${format === "md" ? "is-active" : ""}`}>
+            <input
+              type="radio"
+              name="download-format"
+              value="md"
+              checked={format === "md"}
+              onChange={() => setFormat("md")}
+              disabled={busy}
+            />
+            Markdown
+          </label>
         </div>
 
         {index ? (
@@ -187,7 +318,7 @@ export function DownloadModal({ path, title, index, onClose }: Props) {
             type="button"
             disabled={busy || selectedPaths.size === 0 || !index}
           >
-            {busy ? "Zipping…" : `Download ${selectedPaths.size} doc${selectedPaths.size === 1 ? "" : "s"}`}
+            {buttonLabel}
           </button>
         </div>
       </div>

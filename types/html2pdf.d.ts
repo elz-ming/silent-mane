@@ -24,6 +24,7 @@ declare module "html2pdf.js" {
     from(element: Element | string): Html2Pdf;
     save(): Promise<void>;
     output(type?: string): Promise<Blob | string>;
+    outputPdf(type?: string): Promise<Blob | string>;
     then(fn: (val: unknown) => unknown): Html2Pdf;
   }
 
