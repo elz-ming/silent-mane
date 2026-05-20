@@ -108,15 +108,16 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
-// PDF rendering happens against this hidden container — we reuse one
-// element across docs so the browser doesn't reflow 30 separate trees.
-// CSS lives inline so the layout doesn't depend on globals.css being
-// loaded (and matches what the user sees in the rendered preview).
+// PDF rendering happens against this hidden container. We park it
+// absolute-positioned off-screen (rather than position:fixed) so the
+// browser still gives it normal flow + layout, which html2canvas needs
+// to read clientHeight/scrollHeight. Visibility stays on — `visibility:
+// hidden` would make html2canvas skip the content.
 function createPdfStage(): HTMLDivElement {
   const div = document.createElement("div");
   div.style.cssText = [
-    "position:fixed",
-    "left:-10000px",
+    "position:absolute",
+    "left:-99999px",
     "top:0",
     "width:794px", // ~A4 at 96dpi
     "padding:24px",
@@ -128,6 +129,10 @@ function createPdfStage(): HTMLDivElement {
   ].join(";");
   document.body.appendChild(div);
   return div;
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((r) => requestAnimationFrame(() => r()));
 }
 
 export function DownloadModal({ path, title, index, onClose }: Props) {
@@ -213,6 +218,11 @@ export function DownloadModal({ path, title, index, onClose }: Props) {
             const docTitle = titleByPath.get(p) ?? p;
             const bodyHtml = await marked.parse(content, { async: true });
             stage.innerHTML = `<h1 style="margin-top:0">${escapeHtml(docTitle)}</h1>${bodyHtml}`;
+            // Force layout, then wait a frame so html2canvas can read
+            // the freshly-rendered dimensions. Without this the canvas
+            // captures a zero-height tree → blank PDF page.
+            void stage.offsetHeight;
+            await nextFrame();
             const worker = html2pdf()
               .set({
                 margin: [12, 14, 14, 14],
@@ -222,7 +232,7 @@ export function DownloadModal({ path, title, index, onClose }: Props) {
                 pagebreak: { mode: ["css", "legacy"] },
               })
               .from(stage);
-            const pdfOut = await worker.outputPdf("blob");
+            const pdfOut = await worker.output("blob");
             const pdfBlob = pdfOut instanceof Blob ? pdfOut : new Blob([pdfOut]);
             const rel = p.startsWith(prefix) ? p.slice(prefix.length) : p;
             const zipPath = rewriteZipPath(rel, ".pdf", slugToTitle, usedByDir);
