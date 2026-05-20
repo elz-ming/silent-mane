@@ -45,6 +45,44 @@ export function PublicShareView({ publication, index, isSignedIn }: Props) {
     state: mobileDrawerState,
     setState: setMobileDrawerState,
   });
+
+  // Draggable divider between the graph and doc panes — same UX as the
+  // owner view. Persists to localStorage under a separate key so the
+  // public reader's preference doesn't bleed into the owner workspace.
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const [draggingSplit, setDraggingSplit] = useState(false);
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const ratio = parseFloat(localStorage.getItem("emdee_share_split_ratio") ?? "");
+    if (Number.isFinite(ratio) && ratio >= 0.15 && ratio <= 0.85) setSplitRatio(ratio);
+  }, []);
+
+  const onDividerPointerDown = useCallback((e: React.PointerEvent) => {
+    const container = splitContainerRef.current;
+    if (!container) return;
+    e.preventDefault();
+    setDraggingSplit(true);
+    document.body.dataset.resizingSplit = "true";
+    const rect = container.getBoundingClientRect();
+    const onMove = (ev: PointerEvent) => {
+      const x = ev.clientX - rect.left;
+      const ratio = Math.max(0.15, Math.min(0.85, x / rect.width));
+      setSplitRatio(ratio);
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      delete document.body.dataset.resizingSplit;
+      setDraggingSplit(false);
+      setSplitRatio((r) => {
+        localStorage.setItem("emdee_share_split_ratio", r.toFixed(4));
+        return r;
+      });
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  }, []);
   const viewLoggedRef = useRef(false);
 
   useEffect(() => {
@@ -265,9 +303,10 @@ export function PublicShareView({ publication, index, isSignedIn }: Props) {
       <main className="content">
         <div
           className="main-split"
+          ref={splitContainerRef}
           data-graph-collapsed={false}
           data-mobile-drawer={mobileDrawerState}
-          style={{ "--graph-ratio": 0.5 } as React.CSSProperties}
+          style={{ "--graph-ratio": splitRatio } as React.CSSProperties}
         >
           <div className="graph-pane">
             <GraphView
@@ -279,7 +318,14 @@ export function PublicShareView({ publication, index, isSignedIn }: Props) {
               forceBranchLayout
             />
           </div>
-          <div className="split-divider" role="separator" aria-orientation="vertical" />
+          <div
+            className="split-divider"
+            onPointerDown={onDividerPointerDown}
+            data-dragging={draggingSplit}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize panes"
+          />
           <div className="doc-pane" ref={docPaneRef}>
             {/* Mobile drawer header — drag to flick between snap points */}
             <div
