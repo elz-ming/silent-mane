@@ -7,6 +7,7 @@ import { ShareModal } from "./ShareModal";
 import { DocTree, buildDocTree, type TreeNode } from "./DocTree";
 import type { DocIndex, DocNode } from "@/src/core/indexer";
 import { getPrevNextSiblings } from "@/src/core/siblings";
+import { resolveWikiLink } from "@/src/core/resolveLink";
 import { useDocsChanged } from "./useDocsChanged";
 import { useDocLog } from "./useDocLog";
 
@@ -726,7 +727,8 @@ export function App({ namespace }: { namespace: string }) {
   }, [addAssocCtx, assocTarget, assocLabel, namespace, loadIndex, index]);
 
   const handleWikiLinkClick = useCallback((title: string) => {
-    const match = index?.docs.find((d) => d.title.toLowerCase() === title.toLowerCase());
+    if (!index) return;
+    const match = resolveWikiLink(index, title);
     if (match) selectDoc(match.path);
   }, [index, selectDoc]);
 

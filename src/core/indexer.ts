@@ -185,8 +185,21 @@ export function buildIndexFromContents(files: { path: string; content: string }[
     });
   }
 
+  // Wiki-link resolution: prefer H1-title match, fall back to filename
+  // slug (last path segment without ".md"). Lets vaults that keep
+  // SCREAMING-KEBAB filenames but human-friendly H1s resolve their
+  // bullets to real docs without rewriting either side.
   const titleToPath = new Map<string, string>();
-  for (const d of docs) titleToPath.set(d.title.toLowerCase(), d.path);
+  const slugToPath = new Map<string, string>();
+  for (const d of docs) {
+    titleToPath.set(d.title.toLowerCase(), d.path);
+    const last = (d.path.split("/").pop() ?? d.path).replace(/\.md$/i, "");
+    slugToPath.set(last.toLowerCase(), d.path);
+  }
+  const resolve = (target: string): string | undefined => {
+    const t = target.toLowerCase();
+    return titleToPath.get(t) ?? slugToPath.get(t);
+  };
 
   const seen = new Set<string>();
   const edges: Edge[] = [];
@@ -208,15 +221,15 @@ export function buildIndexFromContents(files: { path: string; content: string }[
 
   for (const d of docs) {
     for (const link of d.children) {
-      const childPath = titleToPath.get(link.title.toLowerCase());
+      const childPath = resolve(link.title);
       if (childPath) pushHier(d.path, childPath);
     }
     for (const link of d.parents) {
-      const parentPath = titleToPath.get(link.title.toLowerCase());
+      const parentPath = resolve(link.title);
       if (parentPath) pushHier(parentPath, d.path);
     }
     for (const link of d.associates) {
-      const assocPath = titleToPath.get(link.title.toLowerCase());
+      const assocPath = resolve(link.title);
       if (assocPath) pushAssoc(d.path, assocPath);
     }
   }

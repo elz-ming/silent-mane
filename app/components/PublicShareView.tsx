@@ -6,6 +6,7 @@ import { DocEditor } from "./DocEditor";
 import { DocTree, buildDocTree } from "./DocTree";
 import type { DocIndex, DocNode } from "@/src/core/indexer";
 import { getPrevNextSiblings } from "@/src/core/siblings";
+import { resolveWikiLink } from "@/src/core/resolveLink";
 
 interface Publication {
   id: string;
@@ -117,10 +118,10 @@ export function PublicShareView({ publication, index, isSignedIn }: Props) {
 
   const handleWikiLinkClick = useCallback(
     (title: string) => {
-      const doc = byTitle.get(title.toLowerCase());
+      const doc = resolveWikiLink(index, title);
       if (doc) selectDoc(doc.path);
     },
-    [byTitle, selectDoc]
+    [index, selectDoc]
   );
 
   const { prevSibling, nextSibling } = useMemo<{

@@ -2,6 +2,7 @@ import { adminClient } from "@/src/lib/supabase/admin";
 import { getVaultStorage } from "@/src/lib/storage";
 import { buildIndexFromContents } from "@/src/core/indexer";
 import { rewriteForPublic, scopeIndex } from "@/src/lib/publications/scope";
+import { resolvableKeysLower } from "@/src/core/resolveLink";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -59,11 +60,15 @@ export async function GET(_: Request, { params }: Params) {
 
   const scoped = scopeIndex(fullIndex, includedPaths);
 
-  // Rewrite each doc's markdown for public consumption.
-  const includedTitlesLower = new Set(scoped.docs.map((d) => d.title.toLowerCase()));
+  // Rewrite each doc's markdown for public consumption. Resolvable keys
+  // include both the H1 titles AND the filename slugs, so wiki-links like
+  // [[THE-3-WHYS]] survive even when the doc's H1 is "The 3 WHYs of Every
+  // Prospect" — common in vaults where filenames stay in SCREAMING-KEBAB
+  // form while H1s carry a human-friendly title.
+  const resolvable = resolvableKeysLower(scoped.docs);
   const rewrittenDocs = scoped.docs.map((d) => ({
     ...d,
-    content: rewriteForPublic(d.content, includedTitlesLower),
+    content: rewriteForPublic(d.content, resolvable),
   }));
 
   // Re-build the index from the rewritten markdown so the doc body, the

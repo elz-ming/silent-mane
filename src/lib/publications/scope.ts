@@ -136,7 +136,7 @@ export function scopeIndex(index: DocIndex, includedPaths: string[]): DocIndex {
 const REL_HEADINGS = new Set(["child of", "parent of", "associated with"]);
 const WIKI_RE = /\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]/g;
 
-export function rewriteForPublic(content: string, includedTitlesLower: Set<string>): string {
+export function rewriteForPublic(content: string, resolvableKeysLower: Set<string>): string {
   const lines = content.split("\n");
   const out: string[] = [];
 
@@ -168,7 +168,7 @@ export function rewriteForPublic(content: string, includedTitlesLower: Set<strin
           if (kept.length > 0 || bodyLine.trim().length > 0) kept.push(bodyLine);
           continue;
         }
-        kept.push(rewriteWikiLinks(bodyLine, includedTitlesLower));
+        kept.push(rewriteWikiLinks(bodyLine, resolvableKeysLower));
       }
       // Trim trailing blank lines on the kept body.
       while (kept.length > 0 && kept[kept.length - 1].trim() === "") kept.pop();
@@ -183,14 +183,14 @@ export function rewriteForPublic(content: string, includedTitlesLower: Set<strin
       out.push(...kept);
       continue;
     }
-    out.push(rewriteWikiLinks(line, includedTitlesLower));
+    out.push(rewriteWikiLinks(line, resolvableKeysLower));
     i++;
   }
 
   return out.join("\n");
 }
 
-function rewriteWikiLinks(line: string, includedTitlesLower: Set<string>): string {
+function rewriteWikiLinks(line: string, resolvableKeysLower: Set<string>): string {
   // Don't rewrite inside fenced code blocks — that's tracked by the caller
   // for now; the indexer treats code blocks as opaque and our rewriting
   // here is per-line, so this is a known limitation: a wiki-link literally
@@ -198,6 +198,6 @@ function rewriteWikiLinks(line: string, includedTitlesLower: Set<string>): strin
   // in this vault.
   return line.replace(WIKI_RE, (full, title: string) => {
     const targetLower = title.trim().toLowerCase();
-    return includedTitlesLower.has(targetLower) ? full : title;
+    return resolvableKeysLower.has(targetLower) ? full : title;
   });
 }
