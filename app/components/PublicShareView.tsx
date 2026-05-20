@@ -241,6 +241,7 @@ export function PublicShareView({ publication, index, isSignedIn }: Props) {
               onSelect={onGraphSelect}
               prevSibling={prevSibling}
               nextSibling={nextSibling}
+              forceBranchLayout
             />
           </div>
           <div className="split-divider" role="separator" aria-orientation="vertical" />

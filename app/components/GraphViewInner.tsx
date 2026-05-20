@@ -18,6 +18,12 @@ export interface Props {
   // taps a graph node, App's activePath updates and this memo recomputes.
   prevSibling?: DocNode | null;
   nextSibling?: DocNode | null;
+  // When true, treat the focal as a *branch* node even if no parent is
+  // found in the index — reserves slot 0 (parent), 1 (prev), 7 (next) and
+  // packs children into slots 2–6. Used by the public-share view where the
+  // publication root has no parent in the scoped index but we still want
+  // the familiar parent-anchored layout.
+  forceBranchLayout?: boolean;
 }
 
 // 8 angular slots around the focal at 45° each, numbered ANTICLOCKWISE
@@ -206,7 +212,8 @@ function angleForSlot(slot: number): number {
 function placeLayout(
   index: DocIndex,
   focalId: string,
-  page: number
+  page: number,
+  forceBranchLayout: boolean = false
 ): { nodes: PlacedNode[]; edges: PlacedEdge[]; totalRotatable: number; pageSize: number } {
   const titleFor = (p: string) => index.docs.find((d) => d.path === p)?.title ?? p;
   const focalTitle = titleFor(focalId);
@@ -242,7 +249,12 @@ function placeLayout(
   // Rotatable nodes fill a fixed list of slot positions in declared order.
   // With a parent: only the bottom-half slots (lineage slots 0/1/7 stay
   // reserved). At root: all 8 slots — no lineage to reserve.
-  const rotatableSlots = parent ? ROTATABLE_SLOTS_WITH_PARENT : ROTATABLE_SLOTS_ROOT;
+  //
+  // forceBranchLayout overrides the root-detection: even when no parent
+  // exists in the (scoped) index, we still reserve the lineage slots so
+  // the layout matches the rest of the graph. Used by the public-share
+  // view at the publication root.
+  const rotatableSlots = (parent || forceBranchLayout) ? ROTATABLE_SLOTS_WITH_PARENT : ROTATABLE_SLOTS_ROOT;
   const pageSize = rotatableSlots.length;
   const totalRotatable = rotatable.length;
   const totalPages = Math.max(1, Math.ceil(totalRotatable / pageSize));
@@ -614,7 +626,7 @@ function syncGraph(
   }
 }
 
-export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddAssociation, onDeleteNode, onShareNode, onRenameNode, prevSibling, nextSibling }: Props) {
+export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddAssociation, onDeleteNode, onShareNode, onRenameNode, prevSibling, nextSibling, forceBranchLayout }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
   const focalIdRef = useRef<string | null>(null);
@@ -860,8 +872,8 @@ export function GraphViewInner({ index, activePath, onSelect, onAddChild, onAddA
     if (!focalId || !index.docs.some((d) => d.path === focalId)) {
       return null;
     }
-    return placeLayout(index, focalId, page);
-  }, [focalId, page, index]);
+    return placeLayout(index, focalId, page, forceBranchLayout);
+  }, [focalId, page, index, forceBranchLayout]);
 
   useEffect(() => {
     const cy = cyRef.current;
