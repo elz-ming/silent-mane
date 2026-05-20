@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ShareTreePicker } from "./ShareTreePicker";
+import type { DocIndex } from "@/src/core/indexer";
 
 interface ShareRow {
   id: string;
@@ -39,6 +41,7 @@ interface Publication {
 interface Props {
   path: string;
   title: string;
+  index: DocIndex | null;
   onClose: () => void;
 }
 
@@ -53,7 +56,7 @@ function slugify(s: string): string {
     .slice(0, 50);
 }
 
-export function ShareModal({ path, title, onClose }: Props) {
+export function ShareModal({ path, title, index, onClose }: Props) {
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [query, setQuery] = useState("");
@@ -65,16 +68,42 @@ export function ShareModal({ path, title, onClose }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const lookupSeq = useRef(0);
 
-  // Public-share state. `publication` mirrors the current row (null when not
-  // published). `slugDraft` lets the owner edit the slug before the first
-  // publish; once published, it locks (changing slug = unpublish + republish).
+  // Public-share state. `publication` mirrors the current row (null when
+  // not published). `selectedPaths` is the explicit set the picker maintains;
+  // initialized to {focal + all descendants} (associates default OFF).
   const [publication, setPublication] = useState<Publication | null>(null);
   const [ownerHandle, setOwnerHandle] = useState<string | null>(null);
   const [slugDraft, setSlugDraft] = useState(slugify(title));
-  const [includeDescendants, setIncludeDescendants] = useState(true);
-  const [includeAssociates, setIncludeAssociates] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set([path]));
   const [publishBusy, setPublishBusy] = useState(false);
   const [publicError, setPublicError] = useState<string | null>(null);
+
+  // Seed the picker with focal + all descendants the first time the index
+  // becomes available (or path changes). After that, the user's edits
+  // own the set until they unpublish + restart.
+  const seededForPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!index || seededForPathRef.current === path) return;
+    seededForPathRef.current = path;
+    const initial = new Set<string>([path]);
+    const childrenByParent = new Map<string, string[]>();
+    for (const e of index.edges) {
+      if (e.kind !== "hierarchy") continue;
+      const arr = childrenByParent.get(e.from) ?? [];
+      arr.push(e.to);
+      childrenByParent.set(e.from, arr);
+    }
+    const stack = [path];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      for (const c of childrenByParent.get(cur) ?? []) {
+        if (initial.has(c)) continue;
+        initial.add(c);
+        stack.push(c);
+      }
+    }
+    setSelectedPaths(initial);
+  }, [index, path]);
 
   const refreshShares = useCallback(async () => {
     const data = await fetch(`/api/share?path=${encodeURIComponent(path)}`).then((r) => r.json());
@@ -83,8 +112,6 @@ export function ShareModal({ path, title, onClose }: Props) {
     setOwnerHandle(data.owner_handle ?? null);
     if (data.publication) {
       setSlugDraft(data.publication.slug);
-      setIncludeDescendants(data.publication.include_descendants);
-      setIncludeAssociates(data.publication.include_direct_associates);
     }
   }, [path]);
 
@@ -203,7 +230,7 @@ export function ShareModal({ path, title, onClose }: Props) {
     return "Share";
   })();
 
-  const enablePublic = useCallback(async () => {
+  const publishPublic = useCallback(async () => {
     setPublishBusy(true);
     setPublicError(null);
     try {
@@ -213,8 +240,7 @@ export function ShareModal({ path, title, onClose }: Props) {
         body: JSON.stringify({
           slug: slugDraft,
           root_doc_path: path,
-          include_descendants: includeDescendants,
-          include_direct_associates: includeAssociates,
+          included_paths: [...selectedPaths],
         }),
       });
       const data = await res.json();
@@ -228,7 +254,7 @@ export function ShareModal({ path, title, onClose }: Props) {
     } finally {
       setPublishBusy(false);
     }
-  }, [slugDraft, path, includeDescendants, includeAssociates, refreshShares]);
+  }, [slugDraft, path, selectedPaths, refreshShares]);
 
   const disablePublic = useCallback(async () => {
     if (!publication) return;
@@ -285,7 +311,7 @@ export function ShareModal({ path, title, onClose }: Props) {
               role="switch"
               aria-checked={isPublic}
               disabled={publishBusy || handleMissing}
-              onClick={() => (isPublic ? disablePublic() : enablePublic())}
+              onClick={() => (isPublic ? disablePublic() : publishPublic())}
             >
               <span className="share-toggle-knob" />
             </button>
@@ -312,24 +338,17 @@ export function ShareModal({ path, title, onClose }: Props) {
                   />
                 </div>
               </label>
-              <label className="share-public-checkbox">
-                <input
-                  type="checkbox"
-                  checked={includeDescendants}
-                  onChange={(e) => setIncludeDescendants(e.target.checked)}
-                  disabled={publishBusy}
+              {index && (
+                <ShareTreePicker
+                  index={index}
+                  focalPath={path}
+                  selectedPaths={selectedPaths}
+                  onChange={setSelectedPaths}
                 />
-                <span>Include all descendants (children, grandchildren, &hellip;)</span>
-              </label>
-              <label className="share-public-checkbox">
-                <input
-                  type="checkbox"
-                  checked={includeAssociates}
-                  onChange={(e) => setIncludeAssociates(e.target.checked)}
-                  disabled={publishBusy}
-                />
-                <span>Include direct associates (one hop)</span>
-              </label>
+              )}
+              <div className="share-public-hint">
+                Toggle <strong>Share to public</strong> on to publish with these settings.
+              </div>
             </div>
           )}
 

@@ -25,13 +25,29 @@ export function computeIncludedPaths(
   }
 ): string[] {
   const byPath = new Map<string, DocNode>();
-  const byTitle = new Map<string, DocNode>();
-  for (const d of index.docs) {
-    byPath.set(d.path, d);
-    byTitle.set(d.title.toLowerCase(), d);
+  for (const d of index.docs) byPath.set(d.path, d);
+
+  // Build hierarchy adjacency from index.edges — the indexer makes these
+  // bidirectionally from both "Parent of" and "Child of" declarations,
+  // so descendant walks pick up asymmetric edges (a common case where
+  // children declare "Child of [[Parent]]" but the parent doesn't
+  // reciprocate with a Parent-of bullet).
+  const childrenByParent = new Map<string, string[]>();
+  const assocsByPath = new Map<string, string[]>();
+  for (const e of index.edges) {
+    if (e.kind === "hierarchy") {
+      const arr = childrenByParent.get(e.from) ?? [];
+      arr.push(e.to);
+      childrenByParent.set(e.from, arr);
+    } else if (e.kind === "assoc") {
+      const a = assocsByPath.get(e.from) ?? [];
+      a.push(e.to);
+      assocsByPath.set(e.from, a);
+      const b = assocsByPath.get(e.to) ?? [];
+      b.push(e.from);
+      assocsByPath.set(e.to, b);
+    }
   }
-  const resolve = (titleOrPath: string): DocNode | undefined =>
-    byPath.get(titleOrPath) ?? byTitle.get(titleOrPath.toLowerCase());
 
   const included = new Set<string>();
   if (byPath.has(rootPath)) included.add(rootPath);
@@ -40,13 +56,10 @@ export function computeIncludedPaths(
     const stack: string[] = [rootPath];
     while (stack.length > 0) {
       const cur = stack.pop()!;
-      const doc = byPath.get(cur);
-      if (!doc) continue;
-      for (const link of doc.children) {
-        const child = resolve(link.title);
-        if (!child || included.has(child.path)) continue;
-        included.add(child.path);
-        stack.push(child.path);
+      for (const child of childrenByParent.get(cur) ?? []) {
+        if (included.has(child)) continue;
+        included.add(child);
+        stack.push(child);
       }
     }
   }
@@ -56,26 +69,20 @@ export function computeIncludedPaths(
     // associates' associates — that's the recursion we deliberately avoid.
     const snapshot = [...included];
     for (const p of snapshot) {
-      const doc = byPath.get(p);
-      if (!doc) continue;
-      for (const link of doc.associates) {
-        const associate = resolve(link.title);
-        if (!associate || included.has(associate.path)) continue;
-        included.add(associate.path);
+      for (const associate of assocsByPath.get(p) ?? []) {
+        if (included.has(associate)) continue;
+        included.add(associate);
         // If descendants is on, also include the associate's subtree —
         // an associate is a peer node; bringing it in without its own
         // children would feel half-published.
         if (options.includeDescendants) {
-          const stack = [associate.path];
+          const stack = [associate];
           while (stack.length > 0) {
             const cur = stack.pop()!;
-            const d = byPath.get(cur);
-            if (!d) continue;
-            for (const childLink of d.children) {
-              const c = resolve(childLink.title);
-              if (!c || included.has(c.path)) continue;
-              included.add(c.path);
-              stack.push(c.path);
+            for (const c of childrenByParent.get(cur) ?? []) {
+              if (included.has(c)) continue;
+              included.add(c);
+              stack.push(c);
             }
           }
         }

@@ -1329,6 +1329,7 @@ export function App({ namespace }: { namespace: string }) {
         <ShareModal
           path={shareCtx.focalPath}
           title={shareCtx.focalTitle}
+          index={index}
           onClose={() => { setShareCtx(null); refreshShared(); }}
         />
       )}

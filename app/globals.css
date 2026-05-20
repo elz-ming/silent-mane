@@ -1172,6 +1172,165 @@ body[data-resizing-split="true"] {
   border-radius: 6px;
 }
 
+/* Share tree picker — focal-rooted descendant tree with checkbox cascade,
+   separate associates section, counts in the footer. */
+.share-tree-picker {
+  margin-top: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.share-tree-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.share-tree-head-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--muted);
+}
+.share-tree-head-actions { display: flex; gap: 6px; }
+.share-tree-head-actions button {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--fg);
+  cursor: pointer;
+}
+.share-tree-head-actions button:hover { border-color: var(--accent); color: var(--accent); }
+.share-tree-scroll {
+  max-height: 40vh;
+  overflow-y: auto;
+  padding: 6px 10px;
+}
+.share-tree-root, .share-tree-children, .share-tree-assoc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.share-tree-children {
+  margin-left: 18px;
+  border-left: 1px dashed var(--border);
+  padding-left: 8px;
+}
+.share-tree-item { margin: 2px 0; }
+.share-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+.share-tree-chevron {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 120ms ease;
+}
+.share-tree-chevron[data-collapsed="false"] { transform: rotate(90deg); }
+.share-tree-chevron:hover { color: var(--accent); }
+.share-tree-chevron-spacer { display: inline-block; width: 18px; }
+.share-tree-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--fg);
+  flex: 1;
+  min-width: 0;
+}
+.share-tree-label input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+.share-tree-label input[type="checkbox"]:disabled { cursor: not-allowed; }
+.share-tree-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.share-tree-title.is-focal { font-weight: 600; }
+.share-tree-focal-tag {
+  margin-left: 6px;
+  font-size: 10.5px;
+  color: var(--muted);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.share-tree-assoc {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.share-tree-assoc-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+  display: flex;
+  flex-direction: column;
+}
+.share-tree-assoc-hint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.share-tree-assoc-list li {
+  padding: 2px 0;
+  margin-left: 22px;
+}
+.share-tree-footer {
+  padding: 8px 12px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+.share-tree-footer strong { color: var(--fg); }
+.share-tree-empty {
+  padding: 16px;
+  font-size: 12.5px;
+  color: var(--muted);
+  text-align: center;
+}
+.share-public-hint {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.share-public-hint strong { color: var(--fg); }
+
 .share-permission-locked {
   display: inline-flex;
   align-items: center;

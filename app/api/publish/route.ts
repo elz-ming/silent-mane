@@ -72,13 +72,18 @@ export async function POST(request: Request) {
     return Response.json({ error: "root_not_in_vault" }, { status: 400 });
   }
 
-  // Compute the final included set: root + (descendants?) + (direct
-  // associates?) + extras the custom picker added.
-  const computed = computeIncludedPaths(index, rootPath, {
-    includeDescendants: !!body.include_descendants,
-    includeDirectAssociates: !!body.include_direct_associates,
-    extraPaths: body.included_paths,
-  });
+  // If the client supplies an explicit included_paths array (from the
+  // tree picker), trust it verbatim — filtered to paths that actually
+  // exist in the vault. Always force the root in. This is the modern
+  // path. Legacy clients without included_paths fall through to the
+  // flag-driven walker.
+  const existing = new Set(index.docs.map((d) => d.path));
+  const computed = Array.isArray(body.included_paths) && body.included_paths.length > 0
+    ? Array.from(new Set([rootPath, ...body.included_paths.filter((p) => existing.has(p))]))
+    : computeIncludedPaths(index, rootPath, {
+        includeDescendants: !!body.include_descendants,
+        includeDirectAssociates: !!body.include_direct_associates,
+      });
 
   // Upsert: same (owner, slug) replaces. Lets the owner re-publish to refresh
   // the included set without going through a delete+create dance.
