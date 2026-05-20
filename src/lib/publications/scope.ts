@@ -157,22 +157,17 @@ export function rewriteForPublic(content: string, includedTitlesLower: Set<strin
         body.push(lines[i]);
         i++;
       }
-      // Filter bullets: keep only those whose leading wiki-link is in the set.
+      // Keep every bullet verbatim — the owner's structure is part of what
+      // visitors are coming to see. Wiki-links to in-set docs remain
+      // navigable; out-of-set targets get rewritten to plain text by
+      // rewriteWikiLinks (same policy as inline links elsewhere).
       const kept: string[] = [];
       for (const bodyLine of body) {
         const bullet = bodyLine.match(/^\s*[-*+]\s+(.*)$/);
         if (!bullet) {
-          // Non-bullet line (blank, prose, etc.) — keep as separator if there's
-          // already content; otherwise drop empty pre-bullet whitespace.
           if (kept.length > 0 || bodyLine.trim().length > 0) kept.push(bodyLine);
           continue;
         }
-        const leading = bullet[1].match(/\[\[([^\]|#]+)(?:[#|][^\]]*)?\]\]/);
-        if (!leading) continue;
-        const targetLower = leading[1].trim().toLowerCase();
-        if (!includedTitlesLower.has(targetLower)) continue;
-        // Keep the bullet, but rewrite any *other* wiki-links in its prose
-        // to plain text if they're outside the set.
         kept.push(rewriteWikiLinks(bodyLine, includedTitlesLower));
       }
       // Trim trailing blank lines on the kept body.
